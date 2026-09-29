@@ -639,28 +639,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCodingHandles = async (handles: Partial<CodingHandles>): Promise<void> => {
-    setStudent(prev => ({
-      ...prev,
-      codingHandles: {
-        leetcode: handles.leetcode ?? prev.codingHandles?.leetcode ?? '',
-        codechef: handles.codechef ?? prev.codingHandles?.codechef ?? '',
-        hackerrank: handles.hackerrank ?? prev.codingHandles?.hackerrank ?? '',
-        github: handles.github ?? prev.codingHandles?.github ?? ''
-      }
-    }));
+    setStudent(prev => {
+      const updatedHandles: CodingHandles = {
+        ...prev.codingHandles,
+        ...handles
+      };
+      try {
+        localStorage.setItem(`student_handles_${prev.id}`, JSON.stringify(updatedHandles));
+      } catch {}
+      return {
+        ...prev,
+        codingHandles: updatedHandles
+      };
+    });
 
     try {
       if (student.id) {
-        await api.student.updateCodingHandles(student.id, {
-          leetcode: handles.leetcode ?? student.codingHandles?.leetcode ?? '',
-          codechef: handles.codechef ?? student.codingHandles?.codechef ?? '',
-          hackerrank: handles.hackerrank ?? student.codingHandles?.hackerrank ?? '',
-          github: handles.github ?? student.codingHandles?.github ?? ''
-        });
+        await api.student.updateCodingHandles(student.id, handles as any);
       }
-    } catch (err) {
-      console.warn('Update coding handles offline fallback:', err);
-    }
+    } catch {}
   };
 
   const openAuthModal = (mode: 'login' | 'register' = 'login') => {

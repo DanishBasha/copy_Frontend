@@ -690,6 +690,7 @@ export const FacultyMentorPortal: React.FC = () => {
           defaultTargetScope={targetStudentForAssign ? 'SPECIFIC_STUDENT' : 'MY_MENTEES'}
           menteesList={mentees}
           studentsList={mentees}
+          targetStudent={targetStudentForAssign}
         />
       )}
 

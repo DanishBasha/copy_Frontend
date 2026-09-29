@@ -434,7 +434,7 @@ class ApiClient {
       const college = colleges.find(c => c.id === collegeId) || colleges[0];
       const students = this.getStorage<any[]>('admin_students', MOCK_MENTEES_LIST);
       const progs = this.getStorage<DynamicProgram[]>('platform_dynamic_programs', MOCK_DYNAMIC_PROGRAMS).filter(p => p.collegeId === collegeId);
-      const assignments = this.getStorage<InterviewAssignment[]>('platform_assignments', MOCK_ASSIGNMENTS).filter(a => !a.collegeId || a.collegeId === collegeId);
+      const assignments = this.getStorage<InterviewAssignment[]>('assignments', MOCK_ASSIGNMENTS).filter(a => !a.collegeId || a.collegeId === collegeId);
 
       const collegeStudents = students.filter(s => !s.collegeId || s.collegeId === collegeId);
 

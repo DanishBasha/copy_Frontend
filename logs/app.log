@@ -1,0 +1,49 @@
+[2026-09-29 09:00:01] [INFO] [SYS] Platform initialized in multi-tenant mode
+[2026-09-29 09:00:05] [INFO] [INIT] Seeded default colleges and curriculum tracks
+[2026-09-29 09:05:12] [INFO] [AUTH] Login: owner@readiness.edu (PLATFORM_OWNER)
+[2026-09-29 09:10:20] [INFO] [TENANT] Colleges directory loaded: 2 institutions active
+[2026-09-29 09:15:30] [INFO] [NAV] View: DASHBOARD (Active Role: PLATFORM_OWNER)
+[2026-09-29 09:20:45] [INFO] [PROFILE] College profile viewed: SJCE-3118 (Tokens: 2.45M)
+[2026-09-29 09:25:10] [INFO] [LOGGER] Short log format initialized and active
+[2026-09-29 09:57:27] [INFO] [AUTH] Sign out: owner@platform.com
+[2026-09-29 09:57:32] [INFO] [AUTH] Login: superadmin@college.edu (SUPER_ADMIN)
+[2026-09-29 10:26:49] [INFO] [AUTH] Sign out: superadmin@college.edu
+[2026-09-29 10:33:59] [INFO] [AUTH] Login: superadmin@college.edu (SUPER_ADMIN)
+[2026-09-29 10:38:22] [INFO] [AUTH] Sign out: superadmin@college.edu
+[2026-09-29 10:38:26] [INFO] [AUTH] Login: program@college.edu (PROGRAM_ADMIN)
+[2026-09-29 10:39:13] [INFO] [AUTH] Sign out: program@college.edu
+[2026-09-29 10:39:37] [INFO] [AUTH] Login: candidate@example.com (STUDENT)
+[2026-09-29 10:39:50] [INFO] [AUTH] Sign out: candidate@example.com
+[2026-09-29 10:40:15] [INFO] [AUTH] Login: program@college.edu (PROGRAM_ADMIN)
+[2026-09-29 10:40:21] [INFO] [AUTH] Sign out: program@college.edu
+[2026-09-29 10:40:45] [INFO] [AUTH] Login: program@college.edu (PROGRAM_ADMIN)
+[2026-09-29 10:41:31] [INFO] [AUTH] Sign out: program@college.edu
+[2026-09-29 10:41:40] [INFO] [AUTH] Login: danishbasha18@gmail.com (STUDENT)
+[2026-09-29 11:26:27] [INFO] [AUTH] Sign out: danishbasha18@gmail.com
+[2026-09-29 11:26:36] [INFO] [AUTH] Login: superadmin@college.edu (SUPER_ADMIN)
+[2026-09-29 11:28:04] [INFO] [AUTH] Sign out: superadmin@college.edu
+[2026-09-29 11:28:16] [INFO] [AUTH] Login: program@college.edu (PROGRAM_ADMIN)
+[2026-09-29 11:34:00] [INFO] [BUILD] Student portal overhaul verified (dist OK)
+[2026-09-29 11:36:32] [INFO] [AUTH] Sign out: program@college.edu
+[2026-09-29 11:36:43] [INFO] [AUTH] Login: danishbasha18@gmail.com (STUDENT)
+[2026-09-29 11:38:40] [INFO] [AUTH] Sign out: danishbasha18@gmail.com
+[2026-09-29 11:38:57] [INFO] [AUTH] Login: superadmin@college.edu (SUPER_ADMIN)
+[2026-09-29 11:39:47] [INFO] [PROGRAM] Program created: hope (HH)
+[2026-09-29 11:44:34] [INFO] [AUTH] Sign out: superadmin@college.edu
+[2026-09-29 11:44:50] [INFO] [AUTH] Login: danishbasha18@gmail.com (STUDENT)
+[2026-09-29 11:44:53] [INFO] [NAV] View: INTERVIEW_ROOM
+[2026-09-29 11:45:05] [INFO] [AUTH] Sign out: danishbasha18@gmail.com
+[2026-09-29 11:45:05] [INFO] [NAV] View: DASHBOARD
+[2026-09-29 11:58:43] [INFO] [AUTH] Login: superadmin@college.edu (SUPER_ADMIN)
+[2026-09-29 12:15:00] [INFO] [ASSIGN] Fixed assignment scope resolution & targeting
+[2026-09-29 12:18:20] [INFO] [AUTH] Sign out: superadmin@college.edu
+[2026-09-29 12:18:27] [INFO] [AUTH] Login: superadmin@college.edu (SUPER_ADMIN)
+[2026-09-29 12:23:15] [INFO] [AUTH] Sign out: superadmin@college.edu
+[2026-09-29 12:23:20] [INFO] [AUTH] Login: program@college.edu (PROGRAM_ADMIN)
+[2026-09-29 12:45:39] [INFO] [AUTH] Sign out: program@college.edu
+[2026-09-29 12:45:44] [INFO] [AUTH] Login: superadmin@college.edu (SUPER_ADMIN)
+[2026-09-29 12:46:08] [INFO] [PROGRAM] Program created: HOOPE (FDFF)
+[2026-09-29 12:51:10] [INFO] [MODAL] Resolved useBackHandler rapid unmount & popstate
+[2026-09-29 13:49:35] [INFO] [PROGRAM] Program deleted: hope (HH)
+[2026-09-29 13:59:39] [INFO] [PROGRAM] Program deleted: HOOPE (FDFF)
+[2026-09-29 14:00:25] [INFO] [NAV] View: PROFILE

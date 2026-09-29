@@ -80,6 +80,7 @@ export interface CodingHandles {
   codechef?: string;
   leetcodeSolved?: number;
   githubRepos?: number;
+  otherProfiles?: { platform: string; username: string; profileUrl: string; solvedOrRating?: string }[];
 }
 
 export interface ParsedResume {
@@ -146,6 +147,16 @@ export interface DiagnosticReport {
   isFlagged: boolean;
 }
 
+export interface ImprovementChecklistItem {
+  id: string;
+  week: string; // e.g. 'Week 1', 'Week 2', 'Week 3', 'Week 4'
+  title: string;
+  description: string;
+  category?: 'COMMUNICATION' | 'TECHNICAL' | 'SYSTEM_DESIGN' | 'CODING';
+  isCompleted: boolean;
+  completedAt?: string;
+}
+
 export interface StudentProfile {
   id: string;
   name: string;
@@ -166,6 +177,7 @@ export interface StudentProfile {
   codingHandles: CodingHandles;
   resume: ParsedResume | null;
   criteriaTasks: CriteriaTask[];
+  improvementChecklist?: ImprovementChecklistItem[];
   recentReports: DiagnosticReport[];
 }
 

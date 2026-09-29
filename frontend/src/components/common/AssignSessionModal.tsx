@@ -15,7 +15,9 @@ import {
   Layers,
   Building2,
   Globe,
-  Check
+  Check,
+  User,
+  Users
 } from 'lucide-react';
 import { useBackHandler } from '../../hooks/useBackHandler';
 
@@ -30,6 +32,7 @@ export interface AssignSessionModalProps {
   defaultDomain?: string;
   menteesList?: any[];
   studentsList?: any[];
+  targetStudent?: { id: string; name: string; rollNumber?: string; department?: string; email?: string } | null;
 }
 
 export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
@@ -41,6 +44,9 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
   defaultProgramName,
   defaultDepartment,
   defaultDomain,
+  menteesList,
+  studentsList,
+  targetStudent,
 }) => {
   useBackHandler(isOpen, onClose);
 
@@ -53,14 +59,18 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
   // 2. Title (No suggestions)
   const [title, setTitle] = useState('');
 
-  // 3. Target Scope (Multi-select in Programs and Departments; Single Candidate removed)
-  const initialScope = (defaultTargetScope === 'DEPARTMENT' || defaultDepartment) 
+  // 3. Target Scope
+  const initialScope = defaultTargetScope === 'SPECIFIC_STUDENT'
+    ? 'SPECIFIC_STUDENT'
+    : defaultTargetScope === 'MY_MENTEES'
+    ? 'MY_MENTEES'
+    : (defaultTargetScope === 'DEPARTMENT' || defaultDepartment) 
     ? 'DEPARTMENT' 
     : (defaultTargetScope === 'ALL_STUDENTS') 
     ? 'ALL_STUDENTS' 
     : 'PROGRAM';
 
-  const [targetScope, setTargetScope] = useState<'ALL_STUDENTS' | 'PROGRAM' | 'DEPARTMENT'>(initialScope);
+  const [targetScope, setTargetScope] = useState<'ALL_STUDENTS' | 'PROGRAM' | 'DEPARTMENT' | 'MY_MENTEES' | 'SPECIFIC_STUDENT'>(initialScope);
 
   const [programs, setPrograms] = useState<DynamicProgram[]>([]);
   const [selectedProgNames, setSelectedProgNames] = useState<string[]>([]);
@@ -101,7 +111,7 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setError(null);
-      if (defaultTargetScope === 'DEPARTMENT' || defaultTargetScope === 'ALL_STUDENTS' || defaultTargetScope === 'PROGRAM') {
+      if (defaultTargetScope === 'SPECIFIC_STUDENT' || defaultTargetScope === 'MY_MENTEES' || defaultTargetScope === 'DEPARTMENT' || defaultTargetScope === 'ALL_STUDENTS' || defaultTargetScope === 'PROGRAM') {
         setTargetScope(defaultTargetScope);
       } else if (defaultDepartment) {
         setTargetScope('DEPARTMENT');
@@ -116,10 +126,17 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
       api.college.getPrograms(currentUser?.collegeId || 'col-1').then(progs => {
         if (progs && progs.length > 0) {
           setPrograms(progs);
-          if (defaultProgramName) {
+          if (defaultProgramName && progs.some(p => p.name === defaultProgramName)) {
             setSelectedProgNames([defaultProgramName]);
-          } else if (selectedProgNames.length === 0) {
+          } else {
             setSelectedProgNames([progs[0].name]);
+          }
+        } else {
+          setPrograms([]);
+          setSelectedProgNames([]);
+          // If in PROGRAM scope but no programs exist, auto-fallback to DEPARTMENT so user is never blocked!
+          if (!defaultProgramName && (defaultTargetScope === 'PROGRAM' || !defaultTargetScope)) {
+            setTargetScope('DEPARTMENT');
           }
         }
       }).catch(() => {});
@@ -173,9 +190,15 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
       return;
     }
 
-    if (targetScope === 'PROGRAM' && selectedProgNames.length === 0) {
-      setError('Please select at least one program.');
-      return;
+    if (targetScope === 'PROGRAM') {
+      if (programs.length === 0) {
+        setError('No institutional programs available yet. Please select Department-Wise or College-Wide.');
+        return;
+      }
+      if (selectedProgNames.length === 0) {
+        setError('Please select at least one program.');
+        return;
+      }
     }
 
     if (targetScope === 'DEPARTMENT' && selectedDepartments.length === 0) {
@@ -195,6 +218,10 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
       targetDomainOrTrack = selectedDepartments.length === 1 
         ? selectedDepartments[0]
         : `${selectedDepartments.length} Depts (${selectedDepartments.join(', ')})`;
+    } else if (targetScope === 'SPECIFIC_STUDENT') {
+      targetDomainOrTrack = targetStudent ? `${targetStudent.name} (${targetStudent.rollNumber || 'Direct'})` : 'Individual Candidate';
+    } else if (targetScope === 'MY_MENTEES') {
+      targetDomainOrTrack = 'Assigned Faculty Mentees';
     }
 
     try {
@@ -213,6 +240,8 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
         targetSubProgram: targetScope === 'PROGRAM' && selectedSubProgram ? selectedSubProgram : undefined,
         targetDepartment: targetScope === 'DEPARTMENT' ? selectedDepartments[0] : undefined,
         targetDepartments: targetScope === 'DEPARTMENT' ? selectedDepartments : undefined,
+        targetStudentId: targetScope === 'SPECIFIC_STUDENT' ? (targetStudent?.id || targetStudent?.rollNumber) : undefined,
+        targetStudentName: targetScope === 'SPECIFIC_STUDENT' ? targetStudent?.name : undefined,
         interviewMode,
         domainOrTopic: interviewMode === 'RESUME_BASED' ? 'Personal Resume & Project Scrutiny' : domainOrTopic,
         difficulty,
@@ -396,7 +425,7 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
             />
           </div>
 
-          {/* 3. Target Audience / Cohort (Multi-select enabled, single candidate removed) */}
+          {/* 3. Target Audience / Cohort */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="block font-semibold text-neutral-800 uppercase tracking-wider text-[10px]">
@@ -404,6 +433,39 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
               </label>
               <span className="text-[10px] text-neutral-500">Multi-selection supported</span>
             </div>
+
+            {/* Targeted Student or Mentee Banner (if specific student target) */}
+            {targetScope === 'SPECIFIC_STUDENT' && targetStudent && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+                <div className="flex items-center space-x-2">
+                  <User className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Individual Candidate Drill: <strong>{targetStudent.name}</strong> ({targetStudent.rollNumber || 'Candidate'}) · {targetStudent.department}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTargetScope('DEPARTMENT')}
+                  className="text-[11px] text-emerald-800 hover:text-emerald-950 underline font-medium cursor-pointer"
+                >
+                  Change Scope
+                </button>
+              </div>
+            )}
+
+            {targetScope === 'MY_MENTEES' && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900">
+                <div className="flex items-center space-x-2">
+                  <Users className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>Assigning to your Mentee Cohort ({menteesList?.length || 0} active mentees).</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTargetScope('DEPARTMENT')}
+                  className="text-[11px] text-blue-800 hover:text-blue-950 underline font-medium cursor-pointer"
+                >
+                  Change Scope
+                </button>
+              </div>
+            )}
 
             {/* Scope Selection Tabs */}
             <div className="grid grid-cols-3 gap-2">
@@ -419,7 +481,7 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
                   <span className="text-xs font-semibold">Program Students</span>
                 </div>
                 <span className={`text-[10px] ${targetScope === 'PROGRAM' ? 'text-neutral-300' : 'text-neutral-400'}`}>
-                  Multi-program select
+                  {programs.length > 0 ? `${programs.length} configured` : 'Configure in Programs tab'}
                 </span>
               </button>
 
@@ -475,9 +537,30 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
                 </div>
 
                 {programs.length === 0 ? (
-                  <p className="text-amber-800 text-xs bg-amber-50 p-2.5 rounded-lg border border-amber-200">
-                    No programs configured yet. Define programs in the Super Admin portal first.
-                  </p>
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-2">
+                    <p className="text-amber-900 font-semibold">
+                      No institutional dynamic programs configured yet.
+                    </p>
+                    <p className="text-amber-800 text-[11px]">
+                      You can define custom programs in the Programs tab, or assign this assessment immediately to departments or college-wide.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setTargetScope('DEPARTMENT')}
+                        className="px-3 py-1.5 bg-neutral-900 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-xs"
+                      >
+                        Switch to Department-Wise
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTargetScope('ALL_STUDENTS')}
+                        className="px-3 py-1.5 bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-800 rounded-lg text-xs font-semibold cursor-pointer"
+                      >
+                        Switch to College-Wide
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     <div className="flex flex-wrap gap-2">

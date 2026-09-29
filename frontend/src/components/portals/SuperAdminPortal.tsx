@@ -42,7 +42,7 @@ import { AutoDismissAlert } from '../common/AutoDismissAlert';
 import { useBackHandler } from '../../hooks/useBackHandler';
 
 export const SuperAdminPortal: React.FC = () => {
-  const { currentUser } = useApp();
+  const { currentUser, assignments } = useApp();
 
   // Tab navigation: exactly 3 active tabs
   const [activeTab, setActiveTab] = useState<'PROGRAMS' | 'DEPARTMENTS' | 'STUDENTS'>('PROGRAMS');
@@ -444,9 +444,15 @@ export const SuperAdminPortal: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              setAssignTargetScope('PROGRAM');
-              setAssignProgramName(programs[0]?.name || '');
-              setAssignDepartment('');
+              if (programs && programs.length > 0) {
+                setAssignTargetScope('PROGRAM');
+                setAssignProgramName(programs[0].name);
+                setAssignDepartment('');
+              } else {
+                setAssignTargetScope('DEPARTMENT');
+                setAssignProgramName('');
+                setAssignDepartment(departments[0]?.name || 'Computer Science & Engineering');
+              }
               setAssignModalOpen(true);
             }}
             className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-all shadow-xs flex items-center space-x-2 cursor-pointer"
@@ -481,6 +487,71 @@ export const SuperAdminPortal: React.FC = () => {
           durationMs={5000}
           onClose={() => setFeedback(null)}
         />
+      )}
+
+      {/* Dispatched Institutional Assessments Bar */}
+      {assignments && assignments.length > 0 && (
+        <div className="bg-white border border-neutral-200/90 rounded-2xl p-4 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-xl bg-neutral-900 text-white flex items-center justify-center shrink-0">
+                <Mic className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-neutral-900">
+                  Dispatched Assessments &amp; Practice Drills ({assignments.length})
+                </h3>
+                <p className="text-[10px] text-neutral-500">
+                  Institutional rounds, voice mock timers, and listening labs
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (programs && programs.length > 0) {
+                  setAssignTargetScope('PROGRAM');
+                  setAssignProgramName(programs[0].name);
+                  setAssignDepartment('');
+                } else {
+                  setAssignTargetScope('DEPARTMENT');
+                  setAssignProgramName('');
+                  setAssignDepartment(departments[0]?.name || 'Computer Science & Engineering');
+                }
+                setAssignModalOpen(true);
+              }}
+              className="self-start sm:self-auto px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 cursor-pointer shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Dispatch Another Drill</span>
+            </button>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {assignments.slice(0, 6).map((asg) => {
+              const compCount = asg.submissions?.length || 0;
+              return (
+                <div key={asg.id} className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-neutral-200 text-neutral-800">
+                      {asg.sessionType === 'MOCK_INTERVIEW' ? 'VOICE AI' : asg.sessionType === 'LISTENING_COMPREHENSION' ? 'AUDIO LAB' : 'COMBINED'}
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-mono">
+                      Due: {asg.dueDate}
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-neutral-900 truncate">{asg.title}</h4>
+                  <div className="flex items-center justify-between text-[10px] text-neutral-500">
+                    <span className="truncate max-w-[130px]">{asg.targetProgramName || asg.targetDepartment || asg.targetDomainOrTrack || 'All Batches'}</span>
+                    <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                      {compCount} submitted
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* 3 Active Navigation Tabs */}
@@ -553,6 +624,19 @@ export const SuperAdminPortal: React.FC = () => {
                 </button>
 
                 <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAssignTargetScope('PROGRAM');
+                      setAssignProgramName(selectedProgramProfile.program.name);
+                      setAssignDepartment('');
+                      setAssignModalOpen(true);
+                    }}
+                    className="inline-flex items-center space-x-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-xl transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Mic className="w-3.5 h-3.5" />
+                    <span>Assign Assessment to this Program</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => openEditModal(selectedProgramProfile.program)}
@@ -869,6 +953,20 @@ export const SuperAdminPortal: React.FC = () => {
                               <div className="inline-flex items-center space-x-1">
                                 <button
                                   type="button"
+                                  onClick={() => {
+                                    setAssignTargetScope('PROGRAM');
+                                    setAssignProgramName(prog.name);
+                                    setAssignDepartment('');
+                                    setAssignModalOpen(true);
+                                  }}
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg transition-colors cursor-pointer mr-1"
+                                  title={`Assign Assessment to ${prog.name}`}
+                                >
+                                  <Mic className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Assign</span>
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => setSelectedProgramProfile({ program: prog })}
                                   className="p-1.5 text-neutral-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                                   title="View Program Profile & Telemetry"
@@ -980,16 +1078,33 @@ export const SuperAdminPortal: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3.5 px-5 text-right">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedDeptForProgress(dept);
-                          }}
-                          className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold rounded-lg text-xs transition-colors cursor-pointer"
-                        >
-                          View Progress
-                        </button>
+                        <div className="inline-flex items-center space-x-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAssignTargetScope('DEPARTMENT');
+                              setAssignDepartment(dept.name);
+                              setAssignProgramName('');
+                              setAssignModalOpen(true);
+                            }}
+                            className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold rounded-lg text-xs transition-colors cursor-pointer inline-flex items-center space-x-1"
+                            title={`Assign Assessment to ${dept.name}`}
+                          >
+                            <Mic className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Assign Drill</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDeptForProgress(dept);
+                            }}
+                            className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold rounded-lg text-xs transition-colors cursor-pointer"
+                          >
+                            View Progress
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1152,13 +1267,29 @@ export const SuperAdminPortal: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3.5 px-5 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setInspectStudentId(s.id)}
-                          className="px-2.5 py-1 text-xs font-medium text-neutral-700 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors cursor-pointer"
-                        >
-                          View Full Profile
-                        </button>
+                        <div className="inline-flex items-center space-x-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAssignTargetScope('DEPARTMENT');
+                              setAssignDepartment(s.department || 'Computer Science & Engineering');
+                              setAssignProgramName('');
+                              setAssignModalOpen(true);
+                            }}
+                            className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer inline-flex items-center space-x-1"
+                            title={`Assign Assessment to ${s.name}'s cohort`}
+                          >
+                            <Mic className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Assign</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInspectStudentId(s.id)}
+                            className="px-2.5 py-1 text-xs font-medium text-neutral-700 hover:text-neutral-900 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors cursor-pointer"
+                          >
+                            View Profile
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1393,13 +1524,30 @@ export const SuperAdminPortal: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <button 
-                type="button"
-                onClick={() => setSelectedDeptForProgress(null)}
-                className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const deptName = selectedDeptForProgress.name;
+                    setSelectedDeptForProgress(null);
+                    setAssignTargetScope('DEPARTMENT');
+                    setAssignDepartment(deptName);
+                    setAssignProgramName('');
+                    setAssignModalOpen(true);
+                  }}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+                >
+                  <Mic className="w-3.5 h-3.5" />
+                  <span>Assign Drill to {selectedDeptForProgress.code}</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setSelectedDeptForProgress(null)}
+                  className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div className="p-6 space-y-5 overflow-y-auto text-xs">

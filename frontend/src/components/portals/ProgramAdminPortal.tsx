@@ -1000,6 +1000,7 @@ export const ProgramAdminPortal: React.FC = () => {
           defaultDepartment={asgDepartment}
           studentsList={students}
           menteesList={mentors}
+          targetStudent={selectedStudentForAssign}
         />
       )}
 
