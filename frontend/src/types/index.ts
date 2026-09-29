@@ -190,14 +190,14 @@ export interface AssignmentSubmission {
   studentRollNumber: string;
   score: number;
   submittedAt: string;
-  sessionType: 'MOCK_INTERVIEW' | 'LISTENING_COMPREHENSION';
+  sessionType: 'MOCK_INTERVIEW' | 'LISTENING_COMPREHENSION' | 'BOTH';
   status?: 'COMPLETED' | 'FLAGGED';
 }
 
 export interface InterviewAssignment {
   id: string;
   title: string;
-  sessionType: 'MOCK_INTERVIEW' | 'LISTENING_COMPREHENSION';
+  sessionType: 'MOCK_INTERVIEW' | 'LISTENING_COMPREHENSION' | 'BOTH';
   assignedByRole: 'SUPER_ADMIN' | 'PLACEMENT_COORDINATOR' | 'PROGRAM_ADMIN' | 'FACULTY_MENTOR' | 'TRAINER';
   assignedByName: string;
   assignedByEmail?: string;
@@ -208,18 +208,25 @@ export interface InterviewAssignment {
   targetScope: 'ALL_STUDENTS' | 'PROGRAM' | 'DEPARTMENT' | 'MY_MENTEES' | 'SPECIFIC_STUDENT';
   targetDomainOrTrack?: string;
   targetProgramName?: string;
+  targetProgramNames?: string[];
   targetSubProgram?: string;
   targetDepartment?: string;
+  targetDepartments?: string[];
   targetStudentId?: string;
   targetStudentName?: string;
 
   // Configuration
+  interviewMode?: 'TOPIC' | 'RESUME_BASED';
   domainOrTopic?: string;
   difficulty?: 'EASY' | 'MEDIUM' | 'ADVANCED' | 'FAANG';
   listeningPassageId?: string;
   customInstructions?: string;
 
+  // Schedule & Timer Window
   dueDate: string;
+  startTime?: string;
+  endTime?: string;
+  hasTimeWindow?: boolean;
   isMandatory: boolean;
   createdAt: string;
 

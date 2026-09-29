@@ -412,6 +412,48 @@ class ApiClient {
         totalStudents: students.length || 240,
         totalPrograms: programs.length || 3
       };
+    },
+
+    deleteCollege: async (collegeId: string): Promise<void> => {
+      const colleges = this.getStorage<College[]>('platform_colleges', MOCK_COLLEGES);
+      const updated = colleges.filter(c => c.id !== collegeId);
+      this.setStorage('platform_colleges', updated);
+
+      const depts = this.getStorage<DynamicDepartment[]>('platform_departments', MOCK_DYNAMIC_DEPARTMENTS);
+      this.setStorage('platform_departments', depts.filter(d => d.collegeId !== collegeId));
+
+      const progs = this.getStorage<DynamicProgram[]>('platform_dynamic_programs', MOCK_DYNAMIC_PROGRAMS);
+      this.setStorage('platform_dynamic_programs', progs.filter(p => p.collegeId !== collegeId));
+
+      const invites = this.getStorage<PendingInvite[]>('platform_pending_invites', []);
+      this.setStorage('platform_pending_invites', invites.filter(i => i.collegeId !== collegeId));
+    },
+
+    getCollegeProfileMetrics: async (collegeId: string) => {
+      const colleges = this.getStorage<College[]>('platform_colleges', MOCK_COLLEGES);
+      const college = colleges.find(c => c.id === collegeId) || colleges[0];
+      const students = this.getStorage<any[]>('admin_students', MOCK_MENTEES_LIST);
+      const progs = this.getStorage<DynamicProgram[]>('platform_dynamic_programs', MOCK_DYNAMIC_PROGRAMS).filter(p => p.collegeId === collegeId);
+      const assignments = this.getStorage<InterviewAssignment[]>('platform_assignments', MOCK_ASSIGNMENTS).filter(a => !a.collegeId || a.collegeId === collegeId);
+
+      const collegeStudents = students.filter(s => !s.collegeId || s.collegeId === collegeId);
+
+      return {
+        college,
+        enrolledStudentsCount: Math.max(collegeStudents.length, 120),
+        programsCreated: progs,
+        programsCount: progs.length,
+        totalAssignmentsCount: assignments.length,
+        tokenUsage: {
+          totalTokens: 2450800,
+          promptTokens: 1680400,
+          completionTokens: 770400,
+          audioMinutes: 342,
+          whisperHours: 5.7,
+          llmModel: 'Gemini 1.5 Flash + Whisper Pro',
+          status: 'Optimal (Within Tier Quota)'
+        }
+      };
     }
   };
 
@@ -707,6 +749,56 @@ class ApiClient {
       this.setStorage('college_registered_users', registeredUsers);
 
       return { count: newStudents.length, students: newStudents, errors };
+    },
+
+    enrollSingle: async (collegeId: string, studentData: {
+      name: string;
+      rollNumber: string;
+      email: string;
+      password?: string;
+      department: string;
+      batchYear?: number;
+      programName?: string;
+      subProgramName?: string;
+    }): Promise<any> => {
+      const existing = this.getStorage<any[]>('admin_students', MOCK_MENTEES_LIST);
+      const registeredUsers = this.getStorage<any[]>('college_registered_users', []);
+      const studentId = `stu_${Date.now()}`;
+      const studentObj = {
+        id: studentId,
+        name: studentData.name.trim(),
+        rollNumber: studentData.rollNumber.trim().toUpperCase(),
+        email: studentData.email.trim().toLowerCase(),
+        collegeId,
+        department: studentData.department,
+        batchYear: studentData.batchYear || 2026,
+        track: studentData.programName ? (studentData.subProgramName ? `${studentData.programName} (${studentData.subProgramName})` : studentData.programName) : 'General Department',
+        programName: studentData.programName || undefined,
+        subProgramName: studentData.subProgramName || undefined,
+        score: 75,
+        checklist: '2/5',
+        status: 'ON_TRACK',
+        mentorName: 'Faculty Counselor',
+        mentorEmail: 'counselor@college.edu'
+      };
+
+      existing.unshift(studentObj);
+      registeredUsers.push({
+        id: `usr_${studentId}`,
+        name: studentData.name.trim(),
+        email: studentData.email.trim().toLowerCase(),
+        password: studentData.password || 'welcome@2026',
+        role: 'STUDENT',
+        rollNumber: studentData.rollNumber.trim().toUpperCase(),
+        collegeId,
+        department: studentData.department,
+        track: studentObj.track,
+        studentId
+      });
+
+      this.setStorage('admin_students', existing);
+      this.setStorage('college_registered_users', registeredUsers);
+      return studentObj;
     },
 
     bulkAssignPrograms: async (collegeId: string, csvContent: string): Promise<{ count: number; updated: any[]; errors: string[] }> => {
@@ -1563,15 +1655,21 @@ class ApiClient {
         targetScope: asg.targetScope || 'ALL_STUDENTS',
         targetDomainOrTrack: asg.targetDomainOrTrack || 'All Batches',
         targetProgramName: asg.targetProgramName,
+        targetProgramNames: asg.targetProgramNames,
         targetSubProgram: asg.targetSubProgram,
         targetDepartment: asg.targetDepartment,
+        targetDepartments: asg.targetDepartments,
         targetStudentId: asg.targetStudentId,
         targetStudentName: asg.targetStudentName,
+        interviewMode: asg.interviewMode || 'TOPIC',
         domainOrTopic: asg.domainOrTopic || 'General Technical Architecture',
         difficulty: asg.difficulty || 'MEDIUM',
         listeningPassageId: asg.listeningPassageId,
         customInstructions: asg.customInstructions,
         dueDate: asg.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        startTime: asg.startTime,
+        endTime: asg.endTime,
+        hasTimeWindow: Boolean(asg.startTime && asg.endTime),
         isMandatory: asg.isMandatory ?? true,
         createdAt: new Date().toISOString(),
         submissions: []

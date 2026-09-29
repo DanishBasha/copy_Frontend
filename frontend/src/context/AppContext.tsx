@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { 
   UserRole, 
   StudentProfile, 
@@ -9,7 +9,7 @@ import {
   QuestionTurn, 
   Difficulty,
   ParsedResume,
-  AuthUser,
+  AuthUser, 
   CodingHandles 
 } from '../types';
 import { 
@@ -21,6 +21,33 @@ import {
   MOCK_ASSIGNMENTS 
 } from '../data/mockData';
 import { api } from '../services/api';
+import { logger } from '../services/logger';
+
+export type AppView = 'DASHBOARD' | 'INTERVIEW_ROOM' | 'LISTENING_ROOM' | 'REPORT_VIEW' | 'PROFILE';
+
+export const VIEW_TO_HASH: Record<AppView, string> = {
+  DASHBOARD: '#/dashboard',
+  INTERVIEW_ROOM: '#/interview',
+  LISTENING_ROOM: '#/listening',
+  REPORT_VIEW: '#/report',
+  PROFILE: '#/profile'
+};
+
+export const HASH_TO_VIEW: Record<string, AppView> = {
+  '#/dashboard': 'DASHBOARD',
+  '#/interview': 'INTERVIEW_ROOM',
+  '#/listening': 'LISTENING_ROOM',
+  '#/report': 'REPORT_VIEW',
+  '#/profile': 'PROFILE',
+  '#dashboard': 'DASHBOARD',
+  '#interview': 'INTERVIEW_ROOM',
+  '#listening': 'LISTENING_ROOM',
+  '#report': 'REPORT_VIEW',
+  '#profile': 'PROFILE',
+  '': 'DASHBOARD',
+  '#/': 'DASHBOARD',
+  '#': 'DASHBOARD'
+};
 
 interface InterviewSessionState {
   isActive: boolean;
@@ -42,6 +69,11 @@ interface AppContextType {
   authModalMode: 'login' | 'register';
   openAuthModal: (mode?: 'login' | 'register') => void;
   closeAuthModal: () => void;
+  confirmSignOutOpen: boolean;
+  setConfirmSignOutOpen: (open: boolean) => void;
+  requestSignOut: () => void;
+  cancelSignOut: () => void;
+  confirmSignOut: () => void;
   loginUser: (email: string, password: string) => Promise<void>;
   loginWithAuthUser: (authUser: AuthUser, token?: string) => void;
   registerUser: (data: any) => Promise<void>;
@@ -52,8 +84,8 @@ interface AppContextType {
   logout: () => void;
   activeRole: UserRole;
   setActiveRole: (role: UserRole) => void;
-  activeView: 'DASHBOARD' | 'INTERVIEW_ROOM' | 'LISTENING_ROOM' | 'REPORT_VIEW';
-  setActiveView: (view: 'DASHBOARD' | 'INTERVIEW_ROOM' | 'LISTENING_ROOM' | 'REPORT_VIEW') => void;
+  activeView: AppView;
+  setActiveView: (view: AppView, replace?: boolean) => void;
   student: StudentProfile;
   setStudent: React.Dispatch<React.SetStateAction<StudentProfile>>;
   interviewState: InterviewSessionState;
@@ -69,7 +101,7 @@ interface AppContextType {
   createAssignment: (assignment: Partial<InterviewAssignment>) => Promise<InterviewAssignment>;
   activeAssignment: InterviewAssignment | null;
   startAssignedSession: (assignment: InterviewAssignment) => Promise<void>;
-  completeAssignmentSubmission: (assignmentId: string, score: number, sessionType: 'MOCK_INTERVIEW' | 'LISTENING_COMPREHENSION') => Promise<void>;
+  completeAssignmentSubmission: (assignmentId: string, score: number, sessionType: 'MOCK_INTERVIEW' | 'LISTENING_COMPREHENSION' | 'BOTH') => Promise<void>;
   toggleCriteriaTask: (taskId: string) => Promise<void>;
   verifyCriteriaTask: (taskId: string) => Promise<void>;
   uploadResumeData: (payload: FormData | { resumeText: string; fileName?: string } | ParsedResume) => Promise<ParsedResume>;
@@ -92,6 +124,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
+  const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
+  const isAuthenticatedRef = useRef<boolean>(isAuthenticated);
+
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
 
   const [activeRole, setActiveRole] = useState<UserRole>(() => {
     try {
@@ -102,7 +140,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
     return 'STUDENT';
   });
-  const [activeView, setActiveView] = useState<'DASHBOARD' | 'INTERVIEW_ROOM' | 'LISTENING_ROOM' | 'REPORT_VIEW'>('DASHBOARD');
+  const getInitialView = (): AppView => {
+    if (typeof window === 'undefined') return 'DASHBOARD';
+    const hash = window.location.hash;
+    return HASH_TO_VIEW[hash] || 'DASHBOARD';
+  };
+
+  const [activeView, setActiveViewState] = useState<AppView>(getInitialView);
+  const activeViewRef = useRef<AppView>(activeView);
+
+  useEffect(() => {
+    activeViewRef.current = activeView;
+  }, [activeView]);
+
+  const setActiveView = (nextView: AppView, replace: boolean = false) => {
+    if (nextView === activeViewRef.current) return;
+    activeViewRef.current = nextView;
+    setActiveViewState(nextView);
+    logger.info('NAV', `View: ${nextView}`);
+
+    const targetHash = VIEW_TO_HASH[nextView] || '#/dashboard';
+    try {
+      if (replace) {
+        window.history.replaceState({ crpApp: true, view: nextView }, '', targetHash);
+      } else {
+        window.history.pushState({ crpApp: true, view: nextView }, '', targetHash);
+      }
+    } catch (err) {
+      console.warn('History navigation error:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const initial = getInitialView();
+    const targetHash = VIEW_TO_HASH[initial] || '#/dashboard';
+
+    // Seed root guard if history stack does not have our markers
+    if (!window.history.state || (!window.history.state.crpGuard && !window.history.state.crpApp)) {
+      window.history.replaceState({ crpGuard: true }, '', window.location.href);
+      window.history.pushState({ crpApp: true, view: initial }, '', targetHash);
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      // 1. Guard check: User popped into the root guard or outside app boundary
+      if (!event.state || event.state.crpGuard || !event.state.crpApp) {
+        // Prevent tab closure / site exit by pushing dashboard forward
+        window.history.pushState({ crpApp: true, view: 'DASHBOARD' }, '', '#/dashboard');
+        if (activeViewRef.current !== 'DASHBOARD') {
+          if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+          }
+          activeViewRef.current = 'DASHBOARD';
+          setActiveViewState('DASHBOARD');
+        } else {
+          // If already on the home page (DASHBOARD) and tries to go back,
+          // show the sign-out confirmation modal instead of closing the tab!
+          if (isAuthenticatedRef.current) {
+            setConfirmSignOutOpen(true);
+          }
+        }
+        return;
+      }
+
+      // 2. If it's a modal pop, let the modal hook consume it
+      if (event.state.isModal) {
+        return;
+      }
+
+      // 3. Otherwise navigate to the popped view
+      const poppedView = event.state.view as AppView;
+      if (poppedView && poppedView !== activeViewRef.current) {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+        activeViewRef.current = poppedView;
+        setActiveViewState(poppedView);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
   const [student, setStudent] = useState<StudentProfile>(() => {
     try {
       const saved = localStorage.getItem('auth_user');
@@ -234,7 +356,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             completeAssignmentSubmission(activeAssignment.id, res.finalReport.overallScore, activeAssignment.sessionType);
           }
           setInterviewState(prev => ({ ...prev, isActive: false, orbState: 'IDLE' }));
-          setActiveView('REPORT_VIEW');
+          setActiveView('REPORT_VIEW', true);
           return;
         }
 
@@ -351,7 +473,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setInterviewState(prev => ({ ...prev, isActive: false, orbState: 'IDLE' }));
-    setActiveView('REPORT_VIEW');
+    setActiveView('REPORT_VIEW', true);
   };
 
   const recordTabSwitch = async () => {
@@ -430,7 +552,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const completeAssignmentSubmission = async (assignmentId: string, score: number, sessionType: 'MOCK_INTERVIEW' | 'LISTENING_COMPREHENSION') => {
+  const completeAssignmentSubmission = async (assignmentId: string, score: number, sessionType: 'MOCK_INTERVIEW' | 'LISTENING_COMPREHENSION' | 'BOTH') => {
     const submission: AssignmentSubmission = {
       studentId: student.id || 'stu-21cs1084',
       studentName: student.name || 'Aravind Kumar',
@@ -571,6 +693,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsAuthenticated(true);
     localStorage.setItem('auth_user', JSON.stringify(authUser));
     setAuthModalOpen(false);
+    logger.info('AUTH', `Login: ${authUser.email} (${authUser.role})`);
 
     if (user.role === 'STUDENT') {
       try {
@@ -691,16 +814,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const requestSignOut = () => {
+    setConfirmSignOutOpen(true);
+  };
+
+  const cancelSignOut = () => {
+    setConfirmSignOutOpen(false);
+  };
+
+  const confirmSignOut = () => {
+    setConfirmSignOutOpen(false);
+    logout();
+  };
+
   const logout = () => {
+    logger.info('AUTH', `Sign out: ${currentUser?.email || 'User'}`);
     api.setToken(null);
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
     setCurrentUser(null);
     setIsAuthenticated(false);
     setActiveRole('STUDENT');
-    setActiveView('DASHBOARD');
+    setActiveView('DASHBOARD', true);
     setStudent(DEFAULT_CLEAN_STUDENT);
     setLatestReport(null);
+    setConfirmSignOutOpen(false);
   };
 
   return (
@@ -711,6 +849,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authModalMode,
       openAuthModal,
       closeAuthModal,
+      confirmSignOutOpen,
+      setConfirmSignOutOpen,
+      requestSignOut,
+      cancelSignOut,
+      confirmSignOut,
       loginUser,
       loginWithAuthUser,
       registerUser,

@@ -1,12 +1,14 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { X, UploadCloud, CheckCircle2, FileText, Sparkles, ArrowRight, Clipboard, AlertCircle } from 'lucide-react';
+import { useBackHandler } from '../../hooks/useBackHandler';
 
 interface ResumeUploadModalProps {
   onClose: () => void;
 }
 
 export const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({ onClose }) => {
+  useBackHandler(true, onClose);
   const { student, uploadResumeData } = useApp();
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);

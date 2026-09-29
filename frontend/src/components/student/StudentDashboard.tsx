@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { ResumeUploadModal } from './ResumeUploadModal';
 import { SuggestionChatModal } from './SuggestionChatModal';
+import { useBackHandler } from '../../hooks/useBackHandler';
 
 export const StudentDashboard: React.FC = () => {
   const { 
@@ -42,6 +43,7 @@ export const StudentDashboard: React.FC = () => {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false);
   const [handlesModalOpen, setHandlesModalOpen] = useState(false);
+  useBackHandler(handlesModalOpen, () => setHandlesModalOpen(false));
   const [lcUsername, setLcUsername] = useState(student.codingHandles?.leetcode || '');
   const [lcSolvedCount, setLcSolvedCount] = useState<number>(student.codingHandles?.leetcodeSolved ?? 0);
   const [ghUsername, setGhUsername] = useState(student.codingHandles?.github || '');

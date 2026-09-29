@@ -16,7 +16,8 @@ import {
   Clock,
   Play,
   Volume2,
-  VolumeX
+  VolumeX,
+  ArrowLeft
 } from 'lucide-react';
 
 declare global {
@@ -30,7 +31,8 @@ export const MockInterviewRoom: React.FC = () => {
   const { 
     interviewState, 
     submitAnswer,
-    activeAssignment
+    activeAssignment,
+    setActiveView
   } = useApp();
 
   const [hasSessionStarted, setHasSessionStarted] = useState(false);
@@ -369,6 +371,25 @@ export const MockInterviewRoom: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6 animate-in fade-in duration-200">
+      
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => {
+            if ('speechSynthesis' in window) {
+              window.speechSynthesis.cancel();
+            }
+            setActiveView('DASHBOARD');
+          }}
+          className="flex items-center space-x-2 text-xs font-semibold text-neutral-600 hover:text-neutral-900 transition-colors bg-white hover:bg-neutral-50 px-3.5 py-2 rounded-xl border border-neutral-200/90 shadow-2xs group cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4 text-neutral-500 group-hover:-translate-x-0.5 transition-transform" />
+          <span>Back to Dashboard</span>
+        </button>
+
+        <span className="px-2.5 py-1 text-xs font-mono font-medium bg-neutral-100 text-neutral-600 rounded-md border border-neutral-200">
+          SESSION #{interviewState.sessionId || 'ACTIVE'}
+        </span>
+      </div>
       
       {showWarning && (
         <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between text-rose-900 shadow-xs animate-in slide-in-from-top duration-150">

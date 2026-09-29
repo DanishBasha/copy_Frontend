@@ -13,12 +13,18 @@ import { PlacementCoordinatorPortal } from './components/portals/PlacementCoordi
 import { ProgramAdminPortal } from './components/portals/ProgramAdminPortal';
 import { FacultyMentorPortal } from './components/portals/FacultyMentorPortal';
 import { TrainerPortal } from './components/portals/TrainerPortal';
+import { UserProfilePage } from './components/profile/UserProfilePage';
+import { SignOutConfirmModal } from './components/common/SignOutConfirmModal';
 
 const MainContent: React.FC = () => {
   const { isAuthenticated, activeRole, activeView } = useApp();
 
   if (!isAuthenticated) {
     return <LandingPage />;
+  }
+
+  if (activeView === 'PROFILE') {
+    return <UserProfilePage />;
   }
 
   if (activeRole === 'STUDENT') {
@@ -57,12 +63,13 @@ const AppLayout: React.FC = () => {
   const { isAuthenticated } = useApp();
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-neutral-900 flex flex-col antialiased selection:bg-neutral-900 selection:text-white">
+    <div className="min-h-screen bg-[#FAFAFA] text-neutral-900 flex flex-col antialiased selection:bg-neutral-900 selection:text-white w-full">
       {isAuthenticated && <Navbar />}
-      <main className="flex-1">
+      <main className="flex-1 w-full">
         <MainContent />
       </main>
       <AuthModal />
+      <SignOutConfirmModal />
     </div>
   );
 };

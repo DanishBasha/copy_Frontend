@@ -16,6 +16,7 @@ import {
   ArrowRight,
   Zap
 } from 'lucide-react';
+import { useBackHandler } from '../../hooks/useBackHandler';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -27,6 +28,8 @@ export const AuthModal: React.FC = () => {
     registerCandidate,
     completeInviteActivation
   } = useApp();
+
+  useBackHandler(authModalOpen, closeAuthModal);
 
   const [activeTab, setActiveTab] = useState<'LOGIN' | 'REGISTER' | 'INVITE'>('LOGIN');
 
