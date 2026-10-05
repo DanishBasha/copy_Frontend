@@ -25,11 +25,14 @@ import {
   BarChart3,
   Bot,
   ArrowRight,
-  Download
+  Download,
+  LayoutDashboard
 } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
 import { logger } from '../../services/logger';
 
 export const PlatformOwnerPortal: React.FC = () => {
+  const { openAdminDashboard } = useApp();
   const [colleges, setColleges] = useState<College[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [stats, setStats] = useState({
@@ -234,16 +237,13 @@ export const PlatformOwnerPortal: React.FC = () => {
       {/* Header Banner */}
       <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 sm:p-8 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1.5">
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-bold bg-neutral-950 text-amber-300 border border-neutral-800 shadow-xs">
-            <span className="text-base leading-none">🐉🔥</span>
+          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-bold bg-neutral-950 text-blue-300 border border-neutral-800 shadow-xs">
+            <span className="text-base leading-none">🌐</span>
             <span>Platform Owner Control Plane</span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
             Institutional Tenants &amp; Super Admins
           </h1>
-          <p className="text-xs sm:text-sm text-neutral-500 max-w-2xl">
-            Provision participating colleges, inspect institutional telemetry, and dispatch password-creation activation invitations. Super Admins configure their own dynamic training programs and departments.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -402,7 +402,7 @@ export const PlatformOwnerPortal: React.FC = () => {
                     key={col.id} 
                     onClick={() => setProfileCollege(col)}
                     className="hover:bg-neutral-50/90 transition-colors cursor-pointer group"
-                    title="Click row to view College Profile, Programs, and LLM Telemetry"
+                    title="Click row to view College Profile, Programs, and LLM Usage"
                   >
                     <td className="py-4 px-5">
                       <div className="font-semibold text-neutral-900 text-sm group-hover:text-blue-600 transition-colors flex items-center space-x-1.5">
@@ -416,8 +416,24 @@ export const PlatformOwnerPortal: React.FC = () => {
                     </td>
                     <td className="py-4 px-5">
                       {col.superAdminEmail ? (
-                        <div>
-                          <div className="font-medium text-neutral-800">{col.superAdminName || 'Super Admin'}</div>
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAdminDashboard({
+                                role: 'SUPER_ADMIN',
+                                name: col.superAdminName || 'Super Admin',
+                                email: col.superAdminEmail || 'superadmin@college.edu',
+                                collegeId: col.id,
+                                collegeName: col.name
+                              });
+                            }}
+                            className="font-semibold text-neutral-900 hover:text-blue-600 hover:underline transition-colors cursor-pointer text-left block"
+                            title="Open Super Admin Dashboard for this college"
+                          >
+                            {col.superAdminName || 'Super Admin'} ↗
+                          </button>
                           <div className="text-[11px] font-mono text-neutral-500">{col.superAdminEmail}</div>
                         </div>
                       ) : (
@@ -535,6 +551,25 @@ export const PlatformOwnerPortal: React.FC = () => {
                   }`}>
                     {profileCollege.superAdminStatus === 'ACTIVE' ? 'Active Account' : 'Invite Pending'}
                   </span>
+                  {profileCollege.superAdminEmail && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileCollege(null);
+                        openAdminDashboard({
+                          role: 'SUPER_ADMIN',
+                          name: profileCollege.superAdminName || 'Super Admin',
+                          email: profileCollege.superAdminEmail || 'superadmin@college.edu',
+                          collegeId: profileCollege.id,
+                          collegeName: profileCollege.name
+                        });
+                      }}
+                      className="px-3 py-1.5 bg-neutral-900 hover:bg-black text-white text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+                    >
+                      <LayoutDashboard className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Open Dashboard</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -549,7 +584,7 @@ export const PlatformOwnerPortal: React.FC = () => {
                       <span>Enrolled Candidates</span>
                     </span>
                     <span className="text-[10px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
-                      Cohort Scale
+                      Batch Size
                     </span>
                   </div>
                   <div className="flex items-baseline space-x-2">
@@ -658,7 +693,7 @@ export const PlatformOwnerPortal: React.FC = () => {
                       <span>LLM &amp; AI Token Usage</span>
                     </span>
                     <span className="text-[10px] font-mono bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200 font-semibold">
-                      Telemetry
+                      Usage Stats
                     </span>
                   </div>
                   <div className="flex items-baseline space-x-2">

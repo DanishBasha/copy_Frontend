@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
-import { LISTENING_PASSAGES } from '../../data/mockData';
+import { LISTENING_PASSAGES, MOCK_DEPARTMENT_CLASSES } from '../../data/mockData';
 import { InterviewAssignment, DynamicProgram } from '../../types';
 import { 
   Mic, 
@@ -16,23 +16,33 @@ import {
   Building2,
   Globe,
   Check,
+  CheckCircle2,
   User,
   Users
 } from 'lucide-react';
 import { useBackHandler } from '../../hooks/useBackHandler';
+import { DatePicker } from './DatePicker';
+import { TimePicker } from './TimePicker';
+import { DifficultySelect } from './DifficultySelect';
+import { PassageSelect } from './PassageSelect';
 
 export interface AssignSessionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (asg: InterviewAssignment) => void;
-  defaultRole?: 'SUPER_ADMIN' | 'PLACEMENT_COORDINATOR' | 'PROGRAM_ADMIN' | 'FACULTY_MENTOR' | 'TRAINER';
-  defaultTargetScope?: 'ALL_STUDENTS' | 'PROGRAM' | 'DEPARTMENT' | 'MY_MENTEES' | 'SPECIFIC_STUDENT';
+  defaultRole?: 'SUPER_ADMIN' | 'PLACEMENT_COORDINATOR' | 'PROGRAM_ADMIN' | 'FACULTY_MENTOR' | 'DEPARTMENT_ADMIN' | 'COUNSELLOR';
+  defaultTargetScope?: 'ALL_STUDENTS' | 'PROGRAM' | 'DEPARTMENT' | 'MY_MENTEES' | 'SPECIFIC_STUDENT' | 'CLASS';
   defaultProgramName?: string;
   defaultDepartment?: string;
   defaultDomain?: string;
+  defaultClassName?: string;
+  defaultClassNames?: string[];
   menteesList?: any[];
   studentsList?: any[];
-  targetStudent?: { id: string; name: string; rollNumber?: string; department?: string; email?: string } | null;
+  targetStudent?: { id: string; name: string; rollNumber?: string; department?: string; email?: string; className?: string } | null;
+  lockProgramScope?: boolean;
+  lockDepartmentScope?: boolean;
+  lockClassScope?: boolean;
 }
 
 export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
@@ -44,11 +54,20 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
   defaultProgramName,
   defaultDepartment,
   defaultDomain,
+  defaultClassName,
+  defaultClassNames,
   menteesList,
   studentsList,
   targetStudent,
+  lockProgramScope,
+  lockDepartmentScope,
+  lockClassScope
 }) => {
   useBackHandler(isOpen, onClose);
+
+  const isProgramLocked = Boolean(lockProgramScope || (defaultRole === 'PROGRAM_ADMIN' && defaultProgramName));
+  const isClassLocked = Boolean(lockClassScope || defaultRole === 'COUNSELLOR');
+  const isDepartmentLocked = Boolean(!isClassLocked && (lockDepartmentScope || defaultRole === 'DEPARTMENT_ADMIN'));
 
   const { currentUser, createAssignment } = useApp();
   const activeRole = defaultRole || (currentUser?.role as any) || 'SUPER_ADMIN';
@@ -64,20 +83,45 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
     ? 'SPECIFIC_STUDENT'
     : defaultTargetScope === 'MY_MENTEES'
     ? 'MY_MENTEES'
-    : (defaultTargetScope === 'DEPARTMENT' || defaultDepartment) 
+    : isClassLocked
+    ? 'CLASS'
+    : (defaultTargetScope === 'DEPARTMENT' || defaultDepartment || isDepartmentLocked) 
     ? 'DEPARTMENT' 
     : (defaultTargetScope === 'ALL_STUDENTS') 
     ? 'ALL_STUDENTS' 
     : 'PROGRAM';
 
-  const [targetScope, setTargetScope] = useState<'ALL_STUDENTS' | 'PROGRAM' | 'DEPARTMENT' | 'MY_MENTEES' | 'SPECIFIC_STUDENT'>(initialScope);
+  const [targetScope, setTargetScope] = useState<'ALL_STUDENTS' | 'PROGRAM' | 'DEPARTMENT' | 'MY_MENTEES' | 'SPECIFIC_STUDENT' | 'CLASS'>(initialScope);
 
   const [programs, setPrograms] = useState<DynamicProgram[]>([]);
   const [selectedProgNames, setSelectedProgNames] = useState<string[]>([]);
-  const [selectedSubProgram, setSelectedSubProgram] = useState('');
 
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>(
     defaultDepartment ? [defaultDepartment] : ['Computer Science & Engineering']
+  );
+
+  // Class Selection state within the department
+  const [selectedClasses, setSelectedClasses] = useState<string[]>(() => {
+    if (defaultClassNames && defaultClassNames.length > 0) return defaultClassNames;
+    if (defaultClassName) return [defaultClassName];
+    return [];
+  });
+
+  // Load available department classes
+  const [allDepartmentClasses, setAllDepartmentClasses] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('crp_department_classes');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return MOCK_DEPARTMENT_CLASSES;
+  });
+
+  // Filter classes belonging to the selected department
+  const targetDept = defaultDepartment || selectedDepartments[0] || '';
+  const departmentClasses = allDepartmentClasses.filter((c: any) => 
+    !targetDept || 
+    (c.department && c.department.toLowerCase().includes(targetDept.toLowerCase())) ||
+    (targetDept.toLowerCase().includes(c.department?.toLowerCase() || ''))
   );
 
   // 4. Session Configuration
@@ -87,7 +131,8 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
   const [difficulty, setDifficulty] = useState<'EASY' | 'MEDIUM' | 'ADVANCED' | 'FAANG'>('MEDIUM');
   const [listeningPassageId, setListeningPassageId] = useState(LISTENING_PASSAGES[0]?.id || 'pass-finpay');
 
-  // 5. Schedule & Strict Timer Window
+  // 5. Schedule & Active Window (with No Time Limit toggle)
+  const [hasTimeLimit, setHasTimeLimit] = useState(true);
   const [dueDate, setDueDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 3);
@@ -111,7 +156,14 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setError(null);
-      if (defaultTargetScope === 'SPECIFIC_STUDENT' || defaultTargetScope === 'MY_MENTEES' || defaultTargetScope === 'DEPARTMENT' || defaultTargetScope === 'ALL_STUDENTS' || defaultTargetScope === 'PROGRAM') {
+      if (defaultTargetScope === 'SPECIFIC_STUDENT') {
+        setTargetScope('SPECIFIC_STUDENT');
+      } else if (isClassLocked) {
+        setTargetScope('CLASS');
+        if (defaultClassName) {
+          setSelectedClasses([defaultClassName]);
+        }
+      } else if (defaultTargetScope === 'MY_MENTEES' || defaultTargetScope === 'DEPARTMENT' || defaultTargetScope === 'ALL_STUDENTS' || defaultTargetScope === 'PROGRAM') {
         setTargetScope(defaultTargetScope);
       } else if (defaultDepartment) {
         setTargetScope('DEPARTMENT');
@@ -121,6 +173,11 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
 
       if (defaultDepartment) {
         setSelectedDepartments([defaultDepartment]);
+      }
+      if (defaultClassName) {
+        setSelectedClasses([defaultClassName]);
+      } else if (defaultClassNames && defaultClassNames.length > 0) {
+        setSelectedClasses(defaultClassNames);
       }
 
       api.college.getPrograms(currentUser?.collegeId || 'col-1').then(progs => {
@@ -210,14 +267,23 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
     setError(null);
 
     let targetDomainOrTrack = 'All Batches (2026)';
-    if (targetScope === 'PROGRAM') {
+    if (isClassLocked) {
+      const clsName = defaultClassName || selectedClasses[0] || 'My Class';
+      targetDomainOrTrack = targetStudent 
+        ? `${targetStudent.name} (${clsName})`
+        : `${selectedDepartments[0] || defaultDepartment || 'Department'} · Class: ${clsName}`;
+    } else if (targetScope === 'PROGRAM') {
       targetDomainOrTrack = selectedProgNames.length === 1 
-        ? `${selectedProgNames[0]}${selectedSubProgram ? ` (${selectedSubProgram})` : ''}`
+        ? selectedProgNames[0]
         : `${selectedProgNames.length} Programs Selected (${selectedProgNames.join(', ')})`;
-    } else if (targetScope === 'DEPARTMENT') {
-      targetDomainOrTrack = selectedDepartments.length === 1 
-        ? selectedDepartments[0]
-        : `${selectedDepartments.length} Depts (${selectedDepartments.join(', ')})`;
+    } else if (targetScope === 'DEPARTMENT' || targetScope === 'CLASS') {
+      if (selectedClasses.length > 0) {
+        targetDomainOrTrack = `${selectedDepartments[0] || 'Department'} · Classes: ${selectedClasses.join(', ')}`;
+      } else {
+        targetDomainOrTrack = selectedDepartments.length === 1 
+          ? `${selectedDepartments[0]} (All Classes)`
+          : `${selectedDepartments.length} Depts (${selectedDepartments.join(', ')})`;
+      }
     } else if (targetScope === 'SPECIFIC_STUDENT') {
       targetDomainOrTrack = targetStudent ? `${targetStudent.name} (${targetStudent.rollNumber || 'Direct'})` : 'Individual Candidate';
     } else if (targetScope === 'MY_MENTEES') {
@@ -229,27 +295,28 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
         title: title.trim(),
         sessionType,
         assignedByRole: activeRole,
-        assignedByName: currentUser?.name || 'Placement Cell Officer',
+        assignedByName: currentUser?.name || (isClassLocked ? 'Class Counsellor' : 'Placement Cell Officer'),
         assignedByEmail: currentUser?.email,
         assignedById: currentUser?.id,
         collegeId: currentUser?.collegeId || 'col-1',
-        targetScope,
+        targetScope: isClassLocked ? (targetStudent ? 'SPECIFIC_STUDENT' : 'CLASS') : targetScope,
         targetDomainOrTrack,
         targetProgramName: targetScope === 'PROGRAM' ? selectedProgNames[0] : undefined,
         targetProgramNames: targetScope === 'PROGRAM' ? selectedProgNames : undefined,
-        targetSubProgram: targetScope === 'PROGRAM' && selectedSubProgram ? selectedSubProgram : undefined,
-        targetDepartment: targetScope === 'DEPARTMENT' ? selectedDepartments[0] : undefined,
-        targetDepartments: targetScope === 'DEPARTMENT' ? selectedDepartments : undefined,
-        targetStudentId: targetScope === 'SPECIFIC_STUDENT' ? (targetStudent?.id || targetStudent?.rollNumber) : undefined,
-        targetStudentName: targetScope === 'SPECIFIC_STUDENT' ? targetStudent?.name : undefined,
+        targetDepartment: (targetScope === 'DEPARTMENT' || targetScope === 'CLASS' || isClassLocked) ? (selectedDepartments[0] || defaultDepartment) : undefined,
+        targetDepartments: (targetScope === 'DEPARTMENT' || targetScope === 'CLASS' || isClassLocked) ? (selectedDepartments.length > 0 ? selectedDepartments : [defaultDepartment || 'Information Technology']) : undefined,
+        targetClassName: (isClassLocked || targetScope === 'CLASS') ? (defaultClassName || selectedClasses[0]) : (selectedClasses.length === 1 ? selectedClasses[0] : (selectedClasses.length > 1 ? selectedClasses.join(', ') : undefined)),
+        targetClassNames: (isClassLocked || targetScope === 'CLASS') ? [defaultClassName || selectedClasses[0]] : (selectedClasses.length > 0 ? selectedClasses : undefined),
+        targetStudentId: (targetScope === 'SPECIFIC_STUDENT' || Boolean(targetStudent)) ? (targetStudent?.id || targetStudent?.rollNumber) : undefined,
+        targetStudentName: (targetScope === 'SPECIFIC_STUDENT' || Boolean(targetStudent)) ? targetStudent?.name : undefined,
         interviewMode,
-        domainOrTopic: interviewMode === 'RESUME_BASED' ? 'Personal Resume & Project Scrutiny' : domainOrTopic,
+        domainOrTopic: interviewMode === 'RESUME_BASED' ? 'Personal Resume & Projects' : domainOrTopic,
         difficulty,
         listeningPassageId: (sessionType === 'LISTENING_COMPREHENSION' || sessionType === 'BOTH') ? listeningPassageId : undefined,
         dueDate,
-        startTime,
-        endTime,
-        hasTimeWindow: Boolean(startTime && endTime),
+        startTime: hasTimeLimit ? startTime : undefined,
+        endTime: hasTimeLimit ? endTime : undefined,
+        hasTimeWindow: hasTimeLimit,
         isMandatory: true
       });
 
@@ -282,9 +349,6 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-neutral-900">Assign Assessment / Practice Session</h2>
-              <p className="text-xs text-neutral-500">
-                Configure drill format, audience multi-select, resume or domain rubric, and active timer window
-              </p>
             </div>
           </div>
           <button 
@@ -370,7 +434,7 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
                   <p className={`text-[10px] mt-0.5 leading-snug ${
                     sessionType === 'LISTENING_COMPREHENSION' ? 'text-purple-200' : 'text-neutral-500'
                   }`}>
-                    Auditory requirements retention without visual text.
+                    Listening comprehension and recall practice without visual text.
                   </p>
                 </div>
               </button>
@@ -429,7 +493,7 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="block font-semibold text-neutral-800 uppercase tracking-wider text-[10px]">
-                3. Target Audience / Cohort *
+                3. Target Students / Batch *
               </label>
               <span className="text-[10px] text-neutral-500">Multi-selection supported</span>
             </div>
@@ -439,15 +503,23 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
                 <div className="flex items-center space-x-2">
                   <User className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Individual Candidate Drill: <strong>{targetStudent.name}</strong> ({targetStudent.rollNumber || 'Candidate'}) · {targetStudent.department}</span>
+                  <span>
+                    Individual Class Student Drill: <strong>{targetStudent.name}</strong> ({targetStudent.rollNumber || 'Candidate'}) · Class: <strong>{defaultClassName || targetStudent.className || 'Assigned Class'}</strong>
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setTargetScope('DEPARTMENT')}
-                  className="text-[11px] text-emerald-800 hover:text-emerald-950 underline font-medium cursor-pointer"
-                >
-                  Change Scope
-                </button>
+                {isClassLocked ? (
+                  <span className="text-[10px] font-mono font-bold bg-emerald-200 text-emerald-900 px-2.5 py-0.5 rounded-full">
+                    Class Student
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setTargetScope('DEPARTMENT')}
+                    className="text-[11px] text-emerald-800 hover:text-emerald-950 underline font-medium cursor-pointer"
+                  >
+                    Change Scope
+                  </button>
+                )}
               </div>
             )}
 
@@ -455,7 +527,7 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900">
                 <div className="flex items-center space-x-2">
                   <Users className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>Assigning to your Mentee Cohort ({menteesList?.length || 0} active mentees).</span>
+                  <span>Assigning to your Mentee Students ({menteesList?.length || 0} active mentees).</span>
                 </div>
                 <button
                   type="button"
@@ -467,59 +539,93 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
               </div>
             )}
 
-            {/* Scope Selection Tabs */}
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setTargetScope('PROGRAM')}
-                className={`p-2.5 rounded-xl border text-center font-medium transition-all cursor-pointer flex flex-col items-center justify-center space-y-1 ${
-                  targetScope === 'PROGRAM' ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs' : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-700'
-                }`}
-              >
-                <div className="flex items-center space-x-1.5">
-                  <Layers className="w-3.5 h-3.5" />
-                  <span className="text-xs font-semibold">Program Students</span>
+            {/* Scope Selection Tabs or Locked Program / Department / Class Banner */}
+            {isClassLocked ? (
+              <div className="p-3 bg-emerald-950 text-white rounded-xl flex items-center justify-between text-xs shadow-xs">
+                <div className="flex items-center space-x-2">
+                  <Users className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    Target Group: Locked to <strong>{defaultClassName || selectedClasses[0] || 'Assigned Class'}</strong> students only
+                  </span>
                 </div>
-                <span className={`text-[10px] ${targetScope === 'PROGRAM' ? 'text-neutral-300' : 'text-neutral-400'}`}>
-                  {programs.length > 0 ? `${programs.length} configured` : 'Configure in Programs tab'}
+                <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-900 text-emerald-200 font-mono font-bold">
+                  MY CLASS ONLY
                 </span>
-              </button>
+              </div>
+            ) : isProgramLocked ? (
+              <div className="p-3 bg-neutral-900 text-white rounded-xl flex items-center justify-between text-xs shadow-xs">
+                <div className="flex items-center space-x-2">
+                  <Layers className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Target Group: Locked to <strong>{defaultProgramName} Training Program</strong> students only</span>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[10px] bg-neutral-800 text-emerald-300 font-mono font-bold">
+                  PROGRAM ONLY
+                </span>
+              </div>
+            ) : isDepartmentLocked ? (
+              <div className="p-3 bg-purple-950 text-white rounded-xl flex items-center justify-between text-xs shadow-xs">
+                <div className="flex items-center space-x-2">
+                  <Building2 className="w-4 h-4 text-purple-300 shrink-0" />
+                  <span>Target Group: Locked to <strong>{defaultDepartment || selectedDepartments[0]}</strong> department only</span>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[10px] bg-purple-900 text-purple-200 font-mono font-bold">
+                  DEPARTMENT ONLY
+                </span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTargetScope('PROGRAM')}
+                  className={`p-2.5 rounded-xl border text-center font-medium transition-all cursor-pointer flex flex-col items-center justify-center space-y-1 ${
+                    targetScope === 'PROGRAM' ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs' : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-700'
+                  }`}
+                >
+                  <div className="flex items-center space-x-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span className="text-xs font-semibold">Program Students</span>
+                  </div>
+                  <span className={`text-[10px] ${targetScope === 'PROGRAM' ? 'text-neutral-300' : 'text-neutral-400'}`}>
+                    {programs.length > 0 ? `${programs.length} configured` : 'Configure in Programs tab'}
+                  </span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setTargetScope('DEPARTMENT')}
-                className={`p-2.5 rounded-xl border text-center font-medium transition-all cursor-pointer flex flex-col items-center justify-center space-y-1 ${
-                  targetScope === 'DEPARTMENT' ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs' : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-700'
-                }`}
-              >
-                <div className="flex items-center space-x-1.5">
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span className="text-xs font-semibold">Department-Wise</span>
-                </div>
-                <span className={`text-[10px] ${targetScope === 'DEPARTMENT' ? 'text-neutral-300' : 'text-neutral-400'}`}>
-                  Multi-department select
-                </span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetScope('DEPARTMENT')}
+                  className={`p-2.5 rounded-xl border text-center font-medium transition-all cursor-pointer flex flex-col items-center justify-center space-y-1 ${
+                    targetScope === 'DEPARTMENT' ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs' : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-700'
+                  }`}
+                >
+                  <div className="flex items-center space-x-1.5">
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span className="text-xs font-semibold">Department-Wise</span>
+                  </div>
+                  <span className={`text-[10px] ${targetScope === 'DEPARTMENT' ? 'text-neutral-300' : 'text-neutral-400'}`}>
+                    Multi-department select
+                  </span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setTargetScope('ALL_STUDENTS')}
-                className={`p-2.5 rounded-xl border text-center font-medium transition-all cursor-pointer flex flex-col items-center justify-center space-y-1 ${
-                  targetScope === 'ALL_STUDENTS' ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs' : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-700'
-                }`}
-              >
-                <div className="flex items-center space-x-1.5">
-                  <Globe className="w-3.5 h-3.5" />
-                  <span className="text-xs font-semibold">College-Wide</span>
-                </div>
-                <span className={`text-[10px] ${targetScope === 'ALL_STUDENTS' ? 'text-neutral-300' : 'text-neutral-400'}`}>
-                  All enrolled batches
-                </span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setTargetScope('ALL_STUDENTS')}
+                  className={`p-2.5 rounded-xl border text-center font-medium transition-all cursor-pointer flex flex-col items-center justify-center space-y-1 ${
+                    targetScope === 'ALL_STUDENTS' ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs' : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-700'
+                  }`}
+                >
+                  <div className="flex items-center space-x-1.5">
+                    <Globe className="w-3.5 h-3.5" />
+                    <span className="text-xs font-semibold">College-Wide</span>
+                  </div>
+                  <span className={`text-[10px] ${targetScope === 'ALL_STUDENTS' ? 'text-neutral-300' : 'text-neutral-400'}`}>
+                    All enrolled batches
+                  </span>
+                </button>
+              </div>
+            )}
 
             {/* Multi-Select Programs */}
-            {targetScope === 'PROGRAM' && (
+            {targetScope === 'PROGRAM' && !isProgramLocked && (
               <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200/90 space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-semibold text-neutral-800">
@@ -589,89 +695,163 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
                         );
                       })}
                     </div>
-
-                    {/* Sub-program filter if single program chosen with sub-programs */}
-                    {selectedProgNames.length === 1 && (() => {
-                      const singleProg = programs.find(p => p.name === selectedProgNames[0]);
-                      if (!singleProg?.hasSubPrograms || !singleProg.subPrograms?.length) return null;
-                      return (
-                        <div className="pt-2 border-t border-neutral-200/70 space-y-1.5">
-                          <label className="block text-[11px] font-medium text-neutral-600">
-                            Target Sub-Tier in {singleProg.name}:
-                          </label>
-                          <div className="flex flex-wrap gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedSubProgram('')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
-                                selectedSubProgram === ''
-                                  ? 'bg-emerald-700 text-white border-emerald-700'
-                                  : 'bg-white border-neutral-200 hover:bg-neutral-100 text-neutral-600'
-                              }`}
-                            >
-                              ✓ All Tiers
-                            </button>
-                            {singleProg.subPrograms.map(sub => (
-                              <button
-                                key={sub}
-                                type="button"
-                                onClick={() => setSelectedSubProgram(sub)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
-                                  selectedSubProgram === sub
-                                    ? 'bg-emerald-700 text-white border-emerald-700'
-                                    : 'bg-white border-neutral-200 hover:bg-neutral-100 text-neutral-600'
-                                }`}
-                              >
-                                {sub}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Multi-Select Departments */}
-            {targetScope === 'DEPARTMENT' && (
-              <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200/90 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-neutral-800">
-                    Select Target Departments ({selectedDepartments.length} selected)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={selectAllDepartments}
-                    className="text-[11px] text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
-                  >
-                    {selectedDepartments.length === ALL_DEPARTMENTS.length ? 'Deselect Extra' : 'Select All Departments'}
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {ALL_DEPARTMENTS.map((dept) => {
-                    const isSelected = selectedDepartments.includes(dept);
-                    return (
+            {/* Multi-Select Departments & Classes */}
+            {targetScope === 'DEPARTMENT' && !isClassLocked && (
+              <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200/90 space-y-4">
+                {!isDepartmentLocked ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-neutral-800">
+                        Select Target Departments ({selectedDepartments.length} selected)
+                      </label>
                       <button
-                        key={dept}
                         type="button"
-                        onClick={() => toggleDepartment(dept)}
-                        className={`p-2.5 rounded-xl border text-left text-xs font-semibold transition-all cursor-pointer flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs'
-                            : 'bg-white border-neutral-200 hover:border-neutral-300 text-neutral-700'
+                        onClick={selectAllDepartments}
+                        className="text-[11px] text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+                      >
+                        {selectedDepartments.length === ALL_DEPARTMENTS.length ? 'Deselect Extra' : 'Select All Departments'}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {ALL_DEPARTMENTS.map((dept) => {
+                        const isSelected = selectedDepartments.includes(dept);
+                        return (
+                          <button
+                            key={dept}
+                            type="button"
+                            onClick={() => toggleDepartment(dept)}
+                            className={`p-2.5 rounded-xl border text-left text-xs font-semibold transition-all cursor-pointer flex items-center justify-between ${
+                              isSelected
+                                ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs'
+                                : 'bg-white border-neutral-200 hover:border-neutral-300 text-neutral-700'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2">
+                              <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-emerald-400' : 'bg-neutral-300'}`}></span>
+                              <span>{dept}</span>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-3 bg-white border border-purple-200 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700">
+                        <Building2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-purple-950 block">{selectedDepartments[0] || defaultDepartment}</span>
+                        <span className="text-[10px] text-purple-700">Strictly locked to your department students and classes.</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold bg-purple-100 text-purple-800 px-2.5 py-1 rounded-full border border-purple-200">
+                      Active Department
+                    </span>
+                  </div>
+                )}
+
+                {/* Class / Section Selection: allows changing classes by selection */}
+                {(isDepartmentLocked || selectedDepartments.length === 1) && (
+                  <div className="pt-3 border-t border-neutral-200/80 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Users className="w-3.5 h-3.5 text-purple-700" />
+                        <label className="text-xs font-bold text-neutral-900">
+                          Target Classes in {selectedDepartments[0] || defaultDepartment}
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {selectedClasses.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedClasses([])}
+                            className="text-[11px] text-purple-700 hover:text-purple-900 font-semibold cursor-pointer"
+                          >
+                            Reset to All Classes
+                          </button>
+                        )}
+                        <span className="text-[10px] font-mono px-2 py-0.5 bg-neutral-200/80 rounded-md font-semibold text-neutral-700">
+                          {selectedClasses.length === 0 ? 'All Classes Selected' : `${selectedClasses.length} Selected`}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedClasses([])}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center space-x-2 ${
+                          selectedClasses.length === 0
+                            ? 'bg-neutral-900 text-white border-neutral-900 shadow-xs ring-2 ring-neutral-900/10'
+                            : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-300'
                         }`}
                       >
-                        <div className="flex items-center space-x-2">
-                          <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-emerald-400' : 'bg-neutral-300'}`}></span>
-                          <span>{dept}</span>
-                        </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                        <span className={`w-1.5 h-1.5 rounded-full ${selectedClasses.length === 0 ? 'bg-emerald-400' : 'bg-neutral-300'}`} />
+                        <span>🏢 All Classes in {selectedDepartments[0] || defaultDepartment}</span>
+                        {selectedClasses.length === 0 && <Check className="w-3.5 h-3.5 text-emerald-400 ml-1" />}
                       </button>
-                    );
-                  })}
+
+                      {departmentClasses.map((cls) => {
+                        const isSelected = selectedClasses.includes(cls.name);
+                        return (
+                          <button
+                            key={cls.id || cls.name}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedClasses(selectedClasses.filter(c => c !== cls.name));
+                              } else {
+                                setSelectedClasses([...selectedClasses, cls.name]);
+                              }
+                            }}
+                            className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center space-x-2 ${
+                              isSelected
+                                ? 'bg-purple-950 text-white border-purple-900 shadow-xs ring-2 ring-purple-900/20'
+                                : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-300'
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-emerald-400' : 'bg-neutral-300'}`} />
+                            <span>{cls.name}</span>
+                            {cls.batchYear && (
+                              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${isSelected ? 'bg-purple-800 text-purple-200' : 'bg-neutral-100 text-neutral-500'}`}>
+                                Batch {cls.batchYear}
+                              </span>
+                            )}
+                            {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 ml-1" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Locked Class Scope Card for Class Counsellor */}
+            {isClassLocked && targetScope !== 'SPECIFIC_STUDENT' && (
+              <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200/90 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-800">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-emerald-950 block">{defaultClassName || selectedClasses[0] || 'My Class'}</span>
+                      <span className="text-[11px] text-emerald-700">Class Counsellor Restriction: Drill will be dispatched exclusively to enrolled students of your class.</span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold bg-emerald-200 text-emerald-900 px-2.5 py-1 rounded-full border border-emerald-300">
+                    Class Scope Locked
+                  </span>
                 </div>
               </div>
             )}
@@ -731,27 +911,23 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
                 {interviewMode === 'TOPIC' ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     <div>
-                      <label className="block text-[11px] font-medium text-neutral-700 mb-1">Focus Technical Domain *</label>
+                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                        Focus Technical Domain *
+                      </label>
                       <input
                         type="text"
                         value={domainOrTopic}
                         onChange={(e) => setDomainOrTopic(e.target.value)}
                         placeholder="e.g. Full Stack & Web Systems, DevOps, Data Engineering"
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-900"
+                        className="w-full bg-white border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs text-neutral-900 focus:outline-none focus:border-neutral-900 shadow-2xs font-medium"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-medium text-neutral-700 mb-1">Difficulty Bar</label>
-                      <select
+                      <DifficultySelect
+                        label="Target Difficulty *"
                         value={difficulty}
-                        onChange={(e) => setDifficulty(e.target.value as any)}
-                        className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-900"
-                      >
-                        <option value="EASY">Entry / Foundation</option>
-                        <option value="MEDIUM">Intermediate (Practical Architecture)</option>
-                        <option value="ADVANCED">Advanced (Concurrency &amp; Edge Cases)</option>
-                        <option value="FAANG">Product Tier / FAANG Bar</option>
-                      </select>
+                        onChange={setDifficulty}
+                      />
                     </div>
                   </div>
                 ) : (
@@ -767,76 +943,105 @@ export const AssignSessionModal: React.FC<AssignSessionModalProps> = ({
 
             {/* For Listening Comprehension or Both: Select Passage */}
             {(sessionType === 'LISTENING_COMPREHENSION' || sessionType === 'BOTH') && (
-              <div className="space-y-1.5 pt-2 border-t border-neutral-200/60">
-                <label className="block text-[11px] font-semibold text-neutral-800 mb-1">
-                  Spoken Briefing Audio Passage *
-                </label>
-                <select
+              <div className="pt-2 border-t border-neutral-200/60">
+                <PassageSelect
+                  label="Spoken Briefing Audio Passage *"
                   value={listeningPassageId}
-                  onChange={(e) => setListeningPassageId(e.target.value)}
-                  className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-900 font-medium"
-                >
-                  {LISTENING_PASSAGES.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title} ({p.domain} · {p.durationSeconds}s)
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-neutral-500">
+                  onChange={setListeningPassageId}
+                />
+                <p className="text-[10px] text-neutral-500 mt-1.5">
                   Audio passage spoken aloud by the voice engine without subtitles, testing candidate oral comprehension recall.
                 </p>
               </div>
             )}
           </div>
 
-          {/* 5. Schedule & Active Timer Window */}
-          <div className="space-y-3 p-4 bg-amber-50/50 rounded-2xl border border-amber-200/80">
-            <div className="flex items-center space-x-2 text-amber-900 font-semibold text-xs">
-              <Clock className="w-4 h-4 text-amber-600" />
-              <span>5. Schedule &amp; Active Timer Window</span>
+          {/* 5. Schedule & Time Limit Window */}
+          <div className="space-y-4 p-4.5 bg-neutral-50/80 rounded-2xl border border-neutral-200">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center space-x-2 text-neutral-900 font-semibold text-xs">
+                <Calendar className="w-4 h-4 text-neutral-700" />
+                <span>5. Schedule &amp; Assessment Window</span>
+              </div>
+
+              {/* Time Restriction Toggle: Strict Window vs No Time Limit */}
+              <div className="inline-flex items-center bg-white border border-neutral-200 rounded-xl p-0.5 text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setHasTimeLimit(true)}
+                  className={`px-3 py-1 rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 ${
+                    hasTimeLimit ? 'bg-neutral-900 text-white shadow-2xs' : 'text-neutral-600 hover:text-neutral-900'
+                  }`}
+                >
+                  <Clock className="w-3 h-3" />
+                  <span>Strict Time Window</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHasTimeLimit(false)}
+                  className={`px-3 py-1 rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 ${
+                    !hasTimeLimit ? 'bg-emerald-600 text-white shadow-2xs' : 'text-neutral-600 hover:text-neutral-900'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>No Time Limit (Anytime)</span>
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block font-medium text-neutral-700 mb-1">Assessment Date *</label>
-                <input
-                  type="date"
-                  required
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              {/* Modern Calendar Date Input */}
+              <div className="sm:col-span-1">
+                <DatePicker
+                  label="Assessment Due Date *"
                   value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-900 focus:outline-none focus:border-neutral-900"
+                  onChange={(val) => setDueDate(val)}
+                  minDate={new Date().toISOString().split('T')[0]}
                 />
               </div>
 
-              <div>
-                <label className="block font-medium text-neutral-700 mb-1">Active From (Time) *</label>
-                <input
-                  type="time"
-                  required
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-900 focus:outline-none focus:border-neutral-900"
-                />
-              </div>
+              {/* Time Inputs (Shown if hasTimeLimit is true) */}
+              {hasTimeLimit ? (
+                <>
+                  <div>
+                    <TimePicker
+                      label="Active From (Start Time) *"
+                      required={hasTimeLimit}
+                      value={startTime}
+                      onChange={setStartTime}
+                    />
+                  </div>
 
-              <div>
-                <label className="block font-medium text-neutral-700 mb-1">Active Until (Time) *</label>
-                <input
-                  type="time"
-                  required
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs text-neutral-900 focus:outline-none focus:border-neutral-900"
-                />
-              </div>
+                  <div>
+                    <TimePicker
+                      label="Active Until (End Time) *"
+                      required={hasTimeLimit}
+                      value={endTime}
+                      onChange={setEndTime}
+                      align="right"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="sm:col-span-2 flex items-center">
+                  <div className="w-full p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-[11px] flex items-center space-x-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      <strong>Flexible / No Time Limit Enabled:</strong> Candidates can start and complete this drill anytime on or before <strong>{dueDate}</strong> without strict hourly lockouts.
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="p-2.5 bg-amber-100/70 border border-amber-300 rounded-xl text-amber-900 text-[11px] flex items-start space-x-2">
-              <Clock className="w-3.5 h-3.5 text-amber-700 mt-0.5 shrink-0" />
-              <span>
-                <strong>Strict Timer Active:</strong> This assessment will be accessible only between <strong>{startTime}</strong> and <strong>{endTime}</strong> on {dueDate}. If a candidate does not complete it within this window, their score will be recorded as <strong>0</strong>.
-              </span>
-            </div>
+            {hasTimeLimit && (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] flex items-start space-x-2">
+                <Clock className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                <span>
+                  <strong>Strict Timer Active:</strong> Accessible strictly between <strong>{startTime}</strong> and <strong>{endTime}</strong> on {dueDate}. Unsubmitted turns beyond this window expire.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Actions */}

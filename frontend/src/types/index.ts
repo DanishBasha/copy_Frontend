@@ -1,9 +1,10 @@
 export type UserRole = 
   | 'PLATFORM_OWNER'
   | 'SUPER_ADMIN'
+  | 'DEPARTMENT_ADMIN'
+  | 'COUNSELLOR'
   | 'PROGRAM_ADMIN'
   | 'FACULTY_MENTOR'
-  | 'TRAINER'
   | 'PLACEMENT_COORDINATOR'
   | 'STUDENT';
 
@@ -13,9 +14,7 @@ export type AdminPermission =
   | 'CAN_VIEW_STUDENT_PROGRESS'
   | 'CAN_ASSIGN_INTERVIEWS'
   | 'CAN_ASSIGN_LISTENING'
-  | 'CAN_ASSIGN_TRAINERS'
-  | 'CAN_MANAGE_STUDENTS'
-  | 'CAN_ASSIGN_SUB_ADMINS';
+  | 'CAN_MANAGE_STUDENTS';
 
 export interface College {
   id: string;
@@ -33,15 +32,26 @@ export interface DynamicProgram {
   collegeId: string;
   name: string;
   code: string;
-  hasSubPrograms: boolean;
-  subPrograms: string[];
+  hasSubPrograms?: boolean;
+  subPrograms?: string[];
   description?: string;
   assignedAdminEmail?: string;
   assignedAdminName?: string;
   adminPermissions: AdminPermission[];
-  canAssignAdminsToPrograms?: string[];
-  isCommonTrainerAllowed?: boolean;
   createdAt: string;
+  // Program Schedule & Time
+  startDate?: string;
+  endDate?: string;
+  durationWeeks?: number;
+  dailyStartTime?: string;
+  dailyEndTime?: string;
+  scheduleType?: 'FLEXIBLE' | 'SCHEDULED_HOURS';
+  // Program Rules & Governance
+  minAttendancePercent?: number;
+  minPassScore?: number;
+  strictProctoring?: boolean;
+  targetDepartment?: string;
+  customRules?: string[];
 }
 
 export interface DynamicDepartment {
@@ -67,6 +77,7 @@ export interface PendingInvite {
   department?: string;
   permissions?: AdminPermission[];
   createdAt: string;
+  expiresAt?: string;
   status: 'PENDING' | 'ACCEPTED';
 }
 
@@ -145,6 +156,8 @@ export interface DiagnosticReport {
   actionableNextSteps: string[];
   tabSwitches: number;
   isFlagged: boolean;
+  isDisqualified?: boolean;
+  disqualificationReason?: string;
 }
 
 export interface ImprovementChecklistItem {
@@ -166,6 +179,7 @@ export interface StudentProfile {
   collegeName?: string;
   department: string;
   batchYear: number;
+  className?: string;
   track: StudentTrack;
   programId?: string;
   programName?: string;
@@ -179,6 +193,13 @@ export interface StudentProfile {
   criteriaTasks: CriteriaTask[];
   improvementChecklist?: ImprovementChecklistItem[];
   recentReports: DiagnosticReport[];
+  overallReadiness?: number;
+  score?: number;
+  domain?: string;
+  status?: string;
+  checklist?: string;
+  coins?: number;
+  zeroCoinsAt?: string;
 }
 
 export interface TrainerTenure {
@@ -203,27 +224,73 @@ export interface AssignmentSubmission {
   score: number;
   submittedAt: string;
   sessionType: 'MOCK_INTERVIEW' | 'LISTENING_COMPREHENSION' | 'BOTH';
-  status?: 'COMPLETED' | 'FLAGGED';
+  status?: 'COMPLETED' | 'FLAGGED' | 'DISQUALIFIED';
+  technicalScore?: number;
+  communicationScore?: number;
+  fluencyScore?: number;
+  department?: string;
+  recommendation?: 'PLACEMENT_READY' | 'ON_TRACK' | 'NEEDS_PRACTICE' | 'AT_RISK' | 'DISQUALIFIED';
+  isDisqualified?: boolean;
+  disqualificationReason?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'ASSIGNMENT_CREATED' | 'SESSION_COMPLETED' | 'SYSTEM_ALERT';
+  assignmentId?: string;
+  reportId?: string;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface DepartmentClass {
+  id: string;
+  name: string; // e.g. "2nd Year IT - Section A"
+  department: string;
+  batchYear: number;
+  semester?: string;
+  facultyInCharge?: string;
+  enrolledStudentCount: number;
+  studentIds?: string[];
+  createdAt: string;
+}
+
+export interface DepartmentStaffMember {
+  id: string;
+  name: string;
+  email: string;
+  designation: string; // e.g. "Assistant Professor", "Associate Professor", "Professor"
+  staffId?: string; // e.g. "IT-FAC-012"
+  department: string;
+  collegeId?: string;
+  status: 'ACTIVE' | 'PENDING_ACTIVATION';
+  activationToken: string;
+  assignedClasses?: string[];
+  createdAt: string;
 }
 
 export interface InterviewAssignment {
   id: string;
   title: string;
   sessionType: 'MOCK_INTERVIEW' | 'LISTENING_COMPREHENSION' | 'BOTH';
-  assignedByRole: 'SUPER_ADMIN' | 'PLACEMENT_COORDINATOR' | 'PROGRAM_ADMIN' | 'FACULTY_MENTOR' | 'TRAINER';
+  assignedByRole: 'SUPER_ADMIN' | 'PLACEMENT_COORDINATOR' | 'PROGRAM_ADMIN' | 'FACULTY_MENTOR' | 'DEPARTMENT_ADMIN' | 'COUNSELLOR';
   assignedByName: string;
   assignedByEmail?: string;
   assignedById?: string;
   collegeId?: string;
 
   // Targeting scope
-  targetScope: 'ALL_STUDENTS' | 'PROGRAM' | 'DEPARTMENT' | 'MY_MENTEES' | 'SPECIFIC_STUDENT';
+  targetScope: 'ALL_STUDENTS' | 'PROGRAM' | 'DEPARTMENT' | 'MY_MENTEES' | 'SPECIFIC_STUDENT' | 'CLASS';
   targetDomainOrTrack?: string;
   targetProgramName?: string;
   targetProgramNames?: string[];
   targetSubProgram?: string;
   targetDepartment?: string;
   targetDepartments?: string[];
+  targetClassName?: string;
+  targetClassNames?: string[];
   targetStudentId?: string;
   targetStudentName?: string;
 
@@ -255,6 +322,9 @@ export interface AuthUser {
   rollNumber?: string;
   department?: string;
   batchYear?: number;
+  className?: string;
+  assignedClassName?: string;
+  assignedClasses?: string[];
   programId?: string;
   programName?: string;
   subProgramName?: string;

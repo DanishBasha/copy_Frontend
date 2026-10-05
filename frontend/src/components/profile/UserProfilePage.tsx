@@ -12,11 +12,14 @@ import {
   LogOut, 
   Lock,
   Layers,
-  Sparkles
+  Sparkles,
+  LayoutDashboard,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 export const UserProfilePage: React.FC = () => {
-  const { currentUser, student, activeRole, setActiveView, requestSignOut } = useApp();
+  const { currentUser, student, activeRole, setActiveView, requestSignOut, theme, toggleTheme } = useApp();
 
   const displayName = currentUser?.name || student?.name || 'Platform Administrator';
   const displayEmail = currentUser?.email || student?.email || 'owner@readiness.edu';
@@ -24,9 +27,55 @@ export const UserProfilePage: React.FC = () => {
 
   const isPlatformOwner = activeRole === 'PLATFORM_OWNER';
 
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [profilePhoto, setProfilePhoto] = React.useState<string | null>(() => {
+    try {
+      return localStorage.getItem(`user_photo_${displayEmail}`) || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Please upload an image smaller than 5MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setProfilePhoto(dataUrl);
+        try {
+          localStorage.setItem(`user_photo_${displayEmail}`, dataUrl);
+        } catch {}
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setProfilePhoto(null);
+    try {
+      localStorage.removeItem(`user_photo_${displayEmail}`);
+    } catch {}
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-8 space-y-8 animate-in fade-in duration-200">
       
+      {/* Hidden Profile Photo Input */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handlePhotoUpload} 
+        accept="image/*" 
+        className="hidden" 
+      />
+
       {/* Top Navigation Bar */}
       <div className="flex items-center justify-between">
         <button
@@ -37,29 +86,70 @@ export const UserProfilePage: React.FC = () => {
           <span>Back to {isPlatformOwner ? 'Control Plane' : 'Dashboard'}</span>
         </button>
 
-        <span className="px-3 py-1 text-xs font-mono font-medium bg-neutral-100 text-neutral-600 rounded-lg border border-neutral-200">
-          PROFILE · {activeRole}
-        </span>
+        <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shadow-2xs cursor-pointer flex items-center space-x-1.5 text-xs font-semibold"
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {theme === 'dark' ? (
+              <>
+                <Sun className="w-3.5 h-3.5 text-amber-400" />
+                <span>Light</span>
+              </>
+            ) : (
+              <>
+                <Moon className="w-3.5 h-3.5 text-neutral-600" />
+                <span>Dark</span>
+              </>
+            )}
+          </button>
+
+          <span className="px-3 py-1 text-xs font-mono font-medium bg-neutral-100 text-neutral-600 rounded-lg border border-neutral-200">
+            PROFILE · {activeRole}
+          </span>
+        </div>
       </div>
 
       {/* Main Profile Card */}
       <div className="bg-white border border-neutral-200/90 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-neutral-100">
-          <div className="flex items-center space-x-4">
-            <div className="w-16 h-16 rounded-2xl bg-neutral-950 text-white flex items-center justify-center text-xl font-bold shadow-md relative overflow-hidden group">
-              <span className="relative z-10">{initials}</span>
-              {isPlatformOwner && (
-                <div className="absolute inset-0 bg-gradient-to-tr from-amber-600/30 to-red-600/30" />
+          <div className="flex items-center space-x-5">
+            {/* Interactive Profile Photo Avatar */}
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className="w-20 h-20 rounded-2xl bg-neutral-950 text-white flex items-center justify-center text-xl font-bold shadow-md relative overflow-hidden group cursor-pointer border-2 border-neutral-200 hover:border-neutral-900 transition-colors shrink-0"
+              title="Click to change profile photo"
+            >
+              {profilePhoto ? (
+                <img 
+                  src={profilePhoto} 
+                  alt={displayName} 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                />
+              ) : (
+                <>
+                  <span className="relative z-10">{initials}</span>
+                  {isPlatformOwner && (
+                    <div className="absolute inset-0 bg-gradient-to-tr from-amber-600/30 to-red-600/30" />
+                  )}
+                </>
               )}
+              {/* Camera Hover Overlay */}
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity text-white text-[10px] space-y-1">
+                <span>Change</span>
+              </div>
             </div>
-            <div className="space-y-1">
+
+            <div className="space-y-1.5">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 tracking-tight">
                   {displayName}
                 </h1>
                 {isPlatformOwner ? (
-                  <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold bg-neutral-900 text-amber-300 border border-neutral-800 shadow-xs">
-                    <span className="text-base leading-none">🐉🔥</span>
+                  <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold bg-neutral-900 text-blue-300 border border-neutral-800 shadow-xs">
+                    <span className="text-base leading-none">🌐</span>
                     <span>Platform Owner</span>
                   </span>
                 ) : (
@@ -68,13 +158,40 @@ export const UserProfilePage: React.FC = () => {
                   </span>
                 )}
               </div>
+
               <p className="text-xs text-neutral-500 font-mono">
                 {displayEmail}
               </p>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-2.5 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  {profilePhoto ? 'Change Photo' : '+ Add Profile Photo'}
+                </button>
+                {profilePhoto && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={() => setActiveView('DASHBOARD')}
+              className="px-4 py-2 bg-neutral-900 hover:bg-black text-white rounded-xl text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
+            >
+              <LayoutDashboard className="w-3.5 h-3.5" />
+              <span>Open Dashboard</span>
+            </button>
             <button
               onClick={requestSignOut}
               className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer"
@@ -94,7 +211,9 @@ export const UserProfilePage: React.FC = () => {
               <span>Account Identity</span>
             </div>
             <p className="text-sm font-semibold text-neutral-900">{displayName}</p>
-            <p className="text-[11px] text-neutral-500 font-mono">ID: {currentUser?.id || 'usr-master-001'}</p>
+            <p className="text-[11px] text-neutral-500 font-mono">
+              {activeRole === 'STUDENT' ? `Roll: ${student?.rollNumber || currentUser?.rollNumber || 'Direct'}` : `ID: ${currentUser?.id || 'usr-master-001'}`}
+            </p>
           </div>
 
           <div className="bg-neutral-50/70 border border-neutral-200/80 rounded-xl p-4.5 space-y-2">
@@ -111,25 +230,31 @@ export const UserProfilePage: React.FC = () => {
           <div className="bg-neutral-50/70 border border-neutral-200/80 rounded-xl p-4.5 space-y-2">
             <div className="flex items-center space-x-2 text-neutral-500 text-xs font-medium">
               <Building2 className="w-4 h-4 text-neutral-400" />
-              <span>Institutional Jurisdiction</span>
+              <span>{activeRole === 'STUDENT' ? 'Academic Department' : 'Institutional Jurisdiction'}</span>
             </div>
             <p className="text-sm font-semibold text-neutral-900">
-              {isPlatformOwner ? 'Global Multi-Tenant SaaS' : (currentUser?.collegeName || 'Autonomous Campus')}
+              {activeRole === 'STUDENT' 
+                ? (student?.department || currentUser?.department || 'Computer Science & Engineering')
+                : (isPlatformOwner ? 'Global Multi-Tenant SaaS' : (currentUser?.collegeName || 'Autonomous Campus'))}
             </p>
             <p className="text-[11px] text-neutral-500">
-              {isPlatformOwner ? 'All registered colleges & cloud tenants' : 'Campus Placement Cell'}
+              {activeRole === 'STUDENT' ? `Class of ${student?.batchYear || currentUser?.batchYear || 2026}` : (isPlatformOwner ? 'All registered colleges & cloud tenants' : 'Campus Placement Cell')}
             </p>
           </div>
 
           <div className="bg-neutral-50/70 border border-neutral-200/80 rounded-xl p-4.5 space-y-2">
             <div className="flex items-center space-x-2 text-neutral-500 text-xs font-medium">
               <ShieldCheck className="w-4 h-4 text-neutral-400" />
-              <span>Platform Role &amp; Tier</span>
+              <span>{activeRole === 'STUDENT' ? 'Enrolled Track' : 'Platform Role & Tier'}</span>
             </div>
             <p className="text-sm font-semibold text-neutral-900">
-              {isPlatformOwner ? '🐉 Master Platform Owner' : activeRole.replace(/_/g, ' ')}
+              {activeRole === 'STUDENT' 
+                ? (student?.track || currentUser?.track || 'General Readiness Track')
+                : (isPlatformOwner ? '🌐 Master Platform Owner' : activeRole.replace(/_/g, ' '))}
             </p>
-            <p className="text-[11px] text-neutral-500">Tier: Enterprise Multi-Tenant Master</p>
+            <p className="text-[11px] text-neutral-500">
+              {activeRole === 'STUDENT' ? `Mentor: ${student?.mentorName || 'Dr. S. Ranganathan'}` : 'Tier: Enterprise Multi-Tenant Master'}
+            </p>
           </div>
 
           <div className="bg-neutral-50/70 border border-neutral-200/80 rounded-xl p-4.5 space-y-2">
@@ -147,28 +272,82 @@ export const UserProfilePage: React.FC = () => {
           <div className="bg-neutral-50/70 border border-neutral-200/80 rounded-xl p-4.5 space-y-2">
             <div className="flex items-center space-x-2 text-neutral-500 text-xs font-medium">
               <Calendar className="w-4 h-4 text-neutral-400" />
-              <span>Account Status</span>
+              <span>{activeRole === 'STUDENT' ? 'Placement Readiness' : 'Account Status'}</span>
             </div>
-            <p className="text-sm font-semibold text-neutral-900">Permanent System Administrator</p>
-            <p className="text-[11px] text-neutral-500 font-mono">Active</p>
+            <p className="text-sm font-semibold text-neutral-900">
+              {activeRole === 'STUDENT' ? `${student?.overallReadiness || 82}% Overall Score` : 'Permanent System Administrator'}
+            </p>
+            <p className="text-[11px] text-neutral-500 font-mono">
+              {activeRole === 'STUDENT' ? 'Active Candidate' : 'Active'}
+            </p>
+          </div>
+
+          {/* Theme & Visual Appearance Setting Card */}
+          <div className="bg-neutral-50/70 border border-neutral-200/80 rounded-xl p-4.5 space-y-2 col-span-1 sm:col-span-2 lg:col-span-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center space-x-2 text-neutral-900 font-semibold text-xs">
+                  {theme === 'dark' ? <Moon className="w-4 h-4 text-amber-400" /> : <Sun className="w-4 h-4 text-amber-500" />}
+                  <span>Visual Appearance & Theme</span>
+                </div>
+                <p className="text-[11px] text-neutral-500 leading-relaxed">
+                  Choose between Mobbin Clean Light Mode and Mobbin Obsidian Dark Mode. Your preference persists across browser sessions.
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => toggleTheme()}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center space-x-1.5 ${
+                    theme === 'light'
+                      ? 'bg-neutral-900 text-white border-neutral-900 shadow-2xs'
+                      : 'bg-white hover:bg-neutral-100 text-neutral-700 border-neutral-200'
+                  }`}
+                >
+                  <Sun className="w-3.5 h-3.5" />
+                  <span>Light</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => toggleTheme()}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center space-x-1.5 ${
+                    theme === 'dark'
+                      ? 'bg-neutral-900 text-white border-neutral-900 shadow-2xs'
+                      : 'bg-white hover:bg-neutral-100 text-neutral-700 border-neutral-200'
+                  }`}
+                >
+                  <Moon className="w-3.5 h-3.5" />
+                  <span>Dark</span>
+                </button>
+              </div>
+            </div>
           </div>
 
         </div>
 
-        {/* Master Privileges & Governance Section */}
+        {/* Master Privileges or Student Verified Qualifications */}
         <div className="pt-4 border-t border-neutral-100 space-y-3">
           <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-900 uppercase tracking-wider font-mono">
             <Key className="w-4 h-4 text-neutral-500" />
-            <span>Authorized System Privileges</span>
+            <span>{activeRole === 'STUDENT' ? 'Verified Candidate Competencies' : 'Authorized System Privileges'}</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {(isPlatformOwner ? [
+            {(activeRole === 'STUDENT' ? [
+              `LeetCode Solved: ${student?.codingHandles?.leetcodeSolved ?? 110} Problems`,
+              `GitHub Repositories: ${student?.codingHandles?.githubRepos ?? 12} Public Repos`,
+              `Resume Profile: ${student?.resume ? 'Verified & Uploaded' : 'Uploaded'}`,
+              `Verbal Pacing: ${student?.recentReports?.[0]?.averageWpm ?? 124} WPM Target`,
+              `Technical Readiness: ${student?.recentReports?.[0]?.technicalScore ?? 86}% Verified`,
+              `Listening Comprehension: Completed FinPay Session`
+            ] : isPlatformOwner ? [
               'Onboard & Provision Institutional Colleges',
               'Dispatch Super Admin Activation Invites',
               'Delete & De-provision Colleges with Password Verification',
               'Monitor Multi-Tenant Student Enrolment',
-              'Audit LLM & Token Telemetry Usage Across Tenants',
+              'Audit LLM & Token Usage Across Tenants',
               'Master Platform Security Governance'
             ] : [
               'Access Assigned Readiness Assessment Workspace',

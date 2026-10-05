@@ -1,12 +1,22 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { useBackHandler } from '../../hooks/useBackHandler';
 import { LogOut, X } from 'lucide-react';
 
 export const SignOutConfirmModal: React.FC = () => {
   const { confirmSignOutOpen, cancelSignOut, confirmSignOut } = useApp();
 
-  useBackHandler(confirmSignOutOpen, cancelSignOut);
+  // Handle keyboard Escape only; do NOT register in modalManager back handler
+  // so back gestures and back buttons do not automatically dismiss this prompt.
+  useEffect(() => {
+    if (!confirmSignOutOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        cancelSignOut();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmSignOutOpen, cancelSignOut]);
 
   if (!confirmSignOutOpen) return null;
 
@@ -35,7 +45,7 @@ export const SignOutConfirmModal: React.FC = () => {
             Are you sure you want to sign out?
           </h3>
           <p className="text-xs text-neutral-500 mt-1 leading-relaxed">
-            Your active session will be ended and you will be returned to the readiness platform landing screen.
+            Your active session will be ended and you will be returned to the LatchUp landing screen.
           </p>
         </div>
 

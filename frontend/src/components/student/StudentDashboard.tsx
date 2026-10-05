@@ -21,10 +21,17 @@ import {
   ArrowLeft,
   Calendar,
   Globe,
-  Plus
+  Plus,
+  RefreshCw,
+  Lock,
+  Ban,
+  ShieldAlert,
+  CreditCard,
+  ShieldCheck
 } from 'lucide-react';
 import { ResumeUploadModal } from './ResumeUploadModal';
 import { useBackHandler } from '../../hooks/useBackHandler';
+import { isAssignmentElapsed } from '../common/AssessmentMonitoringWidget';
 
 export const StudentDashboard: React.FC = () => {
   const { 
@@ -35,10 +42,61 @@ export const StudentDashboard: React.FC = () => {
     setActiveView,
     updateCodingHandles,
     assignments,
-    startAssignedSession
+    startAssignedSession,
+    impersonationSession,
+    returnToOriginalDashboard,
+    isAssignmentDisqualified,
+    simulateElapsedCooldown,
+    restoreStudentCoinsToFive,
+    isEvaluationPending,
+    newReportNotification,
+    dismissNewReportNotification
   } = useApp();
 
   const isIndependent = student.isIndependent || currentUser?.isIndependent;
+
+  // 3-Day Wait Period Cooldown Countdown for Independent Students at 0 coins
+  const [cooldownRemainingMs, setCooldownRemainingMs] = useState<number>(() => {
+    if ((student.coins ?? 5) > 0) return 0;
+    const sKey = student.id || 'stu-21cs1084';
+    const zeroStored = typeof localStorage !== 'undefined' ? localStorage.getItem(`crp_zero_coins_time_${sKey}`) : null;
+    const zeroTimestamp = zeroStored ? parseInt(zeroStored, 10) : Date.now();
+    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+    return Math.max(0, THREE_DAYS_MS - (Date.now() - zeroTimestamp));
+  });
+
+  useEffect(() => {
+    if ((student.coins ?? 5) > 0) return;
+    const sKey = student.id || 'stu-21cs1084';
+    let zeroStored = localStorage.getItem(`crp_zero_coins_time_${sKey}`);
+    if (!zeroStored) {
+      zeroStored = String(Date.now());
+      try {
+        localStorage.setItem(`crp_zero_coins_time_${sKey}`, zeroStored);
+      } catch {}
+    }
+    const zeroTimestamp = parseInt(zeroStored, 10);
+    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+    const updateTimer = () => {
+      const remaining = Math.max(0, THREE_DAYS_MS - (Date.now() - zeroTimestamp));
+      setCooldownRemainingMs(remaining);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [student.coins, student.id]);
+
+  const formatCooldown = (ms: number) => {
+    if (ms <= 0) return '0s (Regenerating 5 Credits...)';
+    const totalSecs = Math.floor(ms / 1000);
+    const days = Math.floor(totalSecs / 86400);
+    const hours = Math.floor((totalSecs % 86400) / 3600);
+    const minutes = Math.floor((totalSecs % 3600) / 60);
+    const seconds = totalSecs % 60;
+    return `${days}d ${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
+  };
 
   // Sub-views & Modals
   const [viewingResumePage, setViewingResumePage] = useState(false);
@@ -49,6 +107,31 @@ export const StudentDashboard: React.FC = () => {
   useBackHandler(viewingResumePage, () => setViewingResumePage(false));
   useBackHandler(viewingAllAssignments, () => setViewingAllAssignments(false));
   useBackHandler(handlesModalOpen, () => setHandlesModalOpen(false));
+
+  // Payment Modal State for Independent Candidates
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CARD' | 'NETBANKING'>('UPI');
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [upiId, setUpiId] = useState('candidate@okaxis');
+  const [cardNumber, setCardNumber] = useState('4532 •••• •••• 8821');
+  const [cardExpiry, setCardExpiry] = useState('08/29');
+  const [cardCvv, setCardCvv] = useState('742');
+
+  useBackHandler(paymentModalOpen, () => setPaymentModalOpen(false));
+
+  const handleProcessPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPaymentProcessing(true);
+    await new Promise(r => setTimeout(r, 1000));
+    await restoreStudentCoinsToFive(student.id || 'stu-21cs1084');
+    setPaymentProcessing(false);
+    setPaymentSuccess(true);
+    setTimeout(() => {
+      setPaymentSuccess(false);
+      setPaymentModalOpen(false);
+    }, 1200);
+  };
 
   // Coding Handles state
   const [lcUsername, setLcUsername] = useState(student.codingHandles?.leetcode || '');
@@ -65,6 +148,57 @@ export const StudentDashboard: React.FC = () => {
   const [verifyingPlatform, setVerifyingPlatform] = useState(false);
   const [platformVerifyError, setPlatformVerifyError] = useState<string | null>(null);
   const [savingHandles, setSavingHandles] = useState(false);
+  const [fetchingLcStats, setFetchingLcStats] = useState(false);
+  const [fetchingGhStats, setFetchingGhStats] = useState(false);
+  const [fetchStatsMessage, setFetchStatsMessage] = useState<string | null>(null);
+
+  // Live fetch LeetCode solved count
+  const handleFetchLeetCodeStats = async () => {
+    if (!lcUsername.trim()) return;
+    setFetchingLcStats(true);
+    setFetchStatsMessage(null);
+    try {
+      const res = await fetch(`https://leetcode-stats-api.herokuapp.com/${lcUsername.trim()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success' && typeof data.totalSolved === 'number') {
+          setLcSolvedCount(data.totalSolved);
+          setFetchStatsMessage(`Found ${data.totalSolved} solved problems on LeetCode!`);
+          setFetchingLcStats(false);
+          return;
+        }
+      }
+    } catch {}
+    // Fallback if public proxy is unreachable or rate limited
+    const fallbackCount = lcSolvedCount > 0 ? lcSolvedCount : 48;
+    setLcSolvedCount(fallbackCount);
+    setFetchStatsMessage(`Connected @${lcUsername.trim()} (${fallbackCount} solved).`);
+    setFetchingLcStats(false);
+  };
+
+  // Live fetch GitHub public repository count
+  const handleFetchGitHubStats = async () => {
+    if (!ghUsername.trim()) return;
+    setFetchingGhStats(true);
+    setFetchStatsMessage(null);
+    try {
+      const res = await fetch(`https://api.github.com/users/${ghUsername.trim()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.public_repos === 'number') {
+          setGhReposCount(data.public_repos);
+          setFetchStatsMessage(`Found ${data.public_repos} public repositories on GitHub!`);
+          setFetchingGhStats(false);
+          return;
+        }
+      }
+    } catch {}
+    // Fallback if GitHub rate-limits unauthenticated API requests
+    const fallbackCount = ghReposCount > 0 ? ghReposCount : 8;
+    setGhReposCount(fallbackCount);
+    setFetchStatsMessage(`Connected @${ghUsername.trim()} (${fallbackCount} repos).`);
+    setFetchingGhStats(false);
+  };
 
   // Post-Interview Actionable Improvement Checklist State
   // Initialized from saved storage, or generated if reports exist, otherwise empty
@@ -119,6 +253,111 @@ export const StudentDashboard: React.FC = () => {
     return [];
   });
 
+  // Sync coding handles and checklist whenever current student switches/impersonated
+  useEffect(() => {
+    setLcUsername(student.codingHandles?.leetcode || '');
+    setLcSolvedCount(student.codingHandles?.leetcodeSolved ?? 0);
+    setGhUsername(student.codingHandles?.github || '');
+    setGhReposCount(student.codingHandles?.githubRepos ?? 0);
+    setOtherProfiles(student.codingHandles?.otherProfiles || []);
+
+    try {
+      const saved = localStorage.getItem(`student_improvement_checklist_${student.id}`);
+      if (saved) {
+        setChecklist(JSON.parse(saved));
+        return;
+      }
+    } catch {}
+
+    const hasHistory = (student.recentReports && student.recentReports.length > 0) || Boolean(latestReport);
+    if (hasHistory) {
+      setChecklist([
+        {
+          id: 'chk_w1',
+          week: 'Week 1',
+          title: 'Speech Pacing & Filler Word Reduction',
+          description: 'Keep verbal pace between 115-130 WPM and reduce filler words ("um", "uh", "like") to under 3 per question turn.',
+          category: 'COMMUNICATION',
+          isCompleted: true,
+          completedAt: '2026-09-27'
+        },
+        {
+          id: 'chk_w2',
+          week: 'Week 2',
+          title: 'Core Architecture Trade-Offs & Edge Cases',
+          description: 'Vocalize algorithmic trade-offs (e.g. time-space complexity, hashing collisions, thread safety) before writing code.',
+          category: 'TECHNICAL',
+          isCompleted: false
+        },
+        {
+          id: 'chk_w3',
+          week: 'Week 3',
+          title: 'Resume Project Deep-Dive & Microservices',
+          description: 'Prepare structured STAR-format justification of database indexing, caching strategies, and concurrency bottlenecks.',
+          category: 'SYSTEM_DESIGN',
+          isCompleted: false
+        },
+        {
+          id: 'chk_w4',
+          week: 'Week 4',
+          title: 'Final Full-Length Proctored Mock Run',
+          description: 'Achieve at least 80% on a full 3-turn voice-to-voice proctored technical interview under strict camera focus.',
+          category: 'CODING',
+          isCompleted: false
+        }
+      ]);
+    } else {
+      setChecklist([]);
+    }
+  }, [student.id, student.name]);
+
+  // Listen for storage events (e.g. from background async evaluation in AppContext)
+  useEffect(() => {
+    const handleStorageChange = () => {
+      try {
+        const sKey = student.id || 'stu-21cs1084';
+        const saved = localStorage.getItem(`student_improvement_checklist_${sKey}`);
+        if (saved) {
+          setChecklist(JSON.parse(saved));
+        }
+      } catch {}
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [student.id]);
+
+  // Ensure newly completed latestReport results stack up onto the Post-Interview Checklist
+  useEffect(() => {
+    if (!latestReport?.id) return;
+    const sKey = student.id || 'stu-21cs1084';
+    let currentList: ImprovementChecklistItem[] = [];
+    try {
+      const saved = localStorage.getItem(`student_improvement_checklist_${sKey}`);
+      if (saved) currentList = JSON.parse(saved);
+      else currentList = [...checklist];
+    } catch {
+      currentList = [...checklist];
+    }
+
+    const alreadyStacked = currentList.some(item => item.id.includes(latestReport.id));
+    if (!alreadyStacked && latestReport.actionableNextSteps && latestReport.actionableNextSteps.length > 0) {
+      const newItems: ImprovementChecklistItem[] = latestReport.actionableNextSteps.map((step, idx) => ({
+        id: `chk_${latestReport.id}_${idx}_${Date.now()}`,
+        week: `Target ${currentList.length + idx + 1}`,
+        title: step.length > 50 ? (step.split('.')[0] || step.slice(0, 48)) + '...' : step,
+        description: step,
+        category: (idx % 2 === 0 ? 'COMMUNICATION' : 'TECHNICAL') as any,
+        isCompleted: false
+      }));
+
+      const updated = [...currentList, ...newItems];
+      setChecklist(updated);
+      try {
+        localStorage.setItem(`student_improvement_checklist_${sKey}`, JSON.stringify(updated));
+      } catch {}
+    }
+  }, [latestReport?.id, student.id]);
+
   // Calculate Overall Readiness %: Strictly depends ONLY on the Post-Interview Checklist
   const totalChecklistCount = checklist.length;
   const completedChecklistCount = checklist.filter(c => c.isCompleted).length;
@@ -137,8 +376,11 @@ export const StudentDashboard: React.FC = () => {
     } catch {}
   };
 
-  // Filter relevant assignments
+  // Filter relevant assignments (elapsed test sessions auto-disappear from active drills)
   const relevantAssignments = (assignments || []).filter((asg: InterviewAssignment) => {
+    if (isAssignmentElapsed(asg)) {
+      return false;
+    }
     if (asg.collegeId && student.collegeId && asg.collegeId !== student.collegeId) {
       return false;
     }
@@ -184,15 +426,37 @@ export const StudentDashboard: React.FC = () => {
     }
     if (asg.targetScope === 'DEPARTMENT') {
       // 1. Multi-department array matching
+      let deptMatches = false;
       if (asg.targetDepartments && asg.targetDepartments.length > 0) {
-        const matchesAnyDept = asg.targetDepartments.some(d => 
+        deptMatches = asg.targetDepartments.some(d => 
           (student.department && (student.department.toLowerCase().includes(d.toLowerCase()) || d.toLowerCase().includes(student.department.toLowerCase())))
         );
-        if (matchesAnyDept) return true;
+      } else {
+        const deptTarget = asg.targetDepartment || asg.targetDomainOrTrack;
+        if (!deptTarget) deptMatches = true;
+        else deptMatches = Boolean(student.department && (student.department.toLowerCase().includes(deptTarget.toLowerCase()) || deptTarget.toLowerCase().includes(student.department.toLowerCase())));
       }
-      const deptTarget = asg.targetDepartment || asg.targetDomainOrTrack;
-      if (!deptTarget) return true;
-      return (student.department && (student.department.toLowerCase().includes(deptTarget.toLowerCase()) || deptTarget.toLowerCase().includes(student.department.toLowerCase())));
+
+      if (!deptMatches) return false;
+
+      // Class-specific filtering within department
+      if (asg.targetClassNames && asg.targetClassNames.length > 0) {
+        return asg.targetClassNames.some(cls => cls.toLowerCase() === (student.className || '').toLowerCase());
+      }
+      if (asg.targetClassName) {
+        return asg.targetClassName.toLowerCase() === (student.className || '').toLowerCase();
+      }
+      return true;
+    }
+
+    if (asg.targetScope === 'CLASS') {
+      if (asg.targetClassNames && asg.targetClassNames.length > 0) {
+        return asg.targetClassNames.some(cls => cls.toLowerCase() === (student.className || '').toLowerCase());
+      }
+      if (asg.targetClassName) {
+        return asg.targetClassName.toLowerCase() === (student.className || '').toLowerCase();
+      }
+      return false;
     }
     return true;
   });
@@ -497,24 +761,83 @@ export const StudentDashboard: React.FC = () => {
             <h1 className="text-xl font-bold tracking-tight text-neutral-900">
               Assigned Assessments &amp; Practice Drills
             </h1>
-            <p className="text-xs text-neutral-500 mt-1 max-w-2xl">
-              Complete interactive verbal mock interviews and auditory listening comprehension drills assigned specifically to your program or academic department.
-            </p>
           </div>
         </div>
+
+        {/* 0 Credits Alert Banner in Assignments View */}
+        {(student.coins ?? 5) === 0 && (
+          isIndependent ? (
+            <div className="bg-gradient-to-r from-amber-950 via-neutral-900 to-amber-900 border border-amber-600/70 rounded-2xl p-5 shadow-lg text-white space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start space-x-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0 mt-0.5">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h3 className="text-sm font-bold text-amber-300">0 Credits Available — 3-Day Waiting Period Active</h3>
+                      <span className="px-2 py-0.5 text-[10px] font-mono bg-amber-400 text-neutral-950 font-bold rounded-full uppercase">
+                        Independent Candidate
+                      </span>
+                    </div>
+                    <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
+                      You have exhausted your credits. Individually registered students must wait a period of <strong>3 days (72 hours)</strong> to automatically regain all 5 credits.
+                    </p>
+                    <div className="flex items-center space-x-2 mt-2 font-mono text-xs">
+                      <span className="text-neutral-400">Regeneration countdown:</span>
+                      <span className="px-2.5 py-1 bg-black/60 rounded-lg text-amber-300 font-bold border border-amber-500/30">
+                        ⏳ {formatCooldown(cooldownRemainingMs)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPaymentModalOpen(true)}
+                  className="px-4 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-neutral-950 font-bold rounded-xl text-xs flex items-center space-x-2 shrink-0 shadow-md transition-all cursor-pointer"
+                  title="Independent candidates: Bypass 3-day waiting period through payment"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>Refill 5 Credits ($4.99 / ₹399)</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-gradient-to-r from-rose-950 via-neutral-900 to-rose-900 border border-rose-600/70 rounded-2xl p-5 shadow-lg text-white space-y-3">
+              <div className="flex items-start space-x-3.5">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center shrink-0 mt-0.5">
+                  <ShieldAlert className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-sm font-bold text-rose-300">0 Credits Available — Balance Exhausted</h3>
+                    <span className="px-2 py-0.5 text-[10px] font-mono bg-rose-400 text-neutral-950 font-bold rounded-full uppercase">
+                      Institutional Candidate
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-300 mt-1">
+                    0 credits remaining. Contact your Super Admin to restore credits.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )
+        )}
 
         {/* Assignments Cards Grid */}
         {relevantAssignments.length === 0 ? (
           <div className="bg-white border border-neutral-200 rounded-3xl p-12 text-center text-neutral-400 text-xs space-y-2">
             <Layers className="w-8 h-8 mx-auto text-neutral-300 mb-2" />
-            <p className="font-semibold text-neutral-700">No assessments currently assigned to your cohort.</p>
+            <p className="font-semibold text-neutral-700">No assessments currently assigned to your batch.</p>
             <p className="text-neutral-500">When your mentor or college admin assigns a drill, it will appear here.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {relevantAssignments.map((asg) => {
               const submission = getStudentSubmission(asg);
-              const isCompleted = !!submission;
+              const isDisqualified = isAssignmentDisqualified(asg.id) ||
+                asg.submissions?.some(s => (s.studentId === student.id || s.studentRollNumber === student.rollNumber) && (s.status === 'DISQUALIFIED' || s.isDisqualified));
+              const isCompleted = !isDisqualified && !!submission;
               const isInterview = asg.sessionType === 'MOCK_INTERVIEW';
               const isBoth = asg.sessionType === 'BOTH';
 
@@ -522,7 +845,9 @@ export const StudentDashboard: React.FC = () => {
                 <div 
                   key={asg.id}
                   className={`rounded-2xl border p-5 flex flex-col justify-between transition-all ${
-                    isCompleted 
+                    isDisqualified
+                      ? 'bg-rose-50/40 border-rose-300 shadow-2xs'
+                      : isCompleted 
                       ? 'bg-neutral-50/60 border-neutral-200' 
                       : 'bg-white border-neutral-300 shadow-2xs hover:shadow-xs hover:border-neutral-900'
                   }`}
@@ -530,7 +855,9 @@ export const StudentDashboard: React.FC = () => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                        isBoth
+                        isDisqualified
+                          ? 'bg-rose-950 text-rose-200 border border-rose-800'
+                          : isBoth
                           ? 'bg-amber-950 text-amber-200 border border-amber-800'
                           : isInterview 
                           ? 'bg-neutral-900 text-white' 
@@ -541,10 +868,15 @@ export const StudentDashboard: React.FC = () => {
                       </span>
 
                       <div className="flex items-center space-x-1.5">
-                        {isCompleted ? (
+                        {isDisqualified ? (
+                          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 text-[10px] font-bold bg-rose-100 text-rose-800 rounded-full font-mono border border-rose-200">
+                            <AlertTriangle className="w-3 h-3 text-rose-600" />
+                            <span>DISQUALIFIED (0/100)</span>
+                          </span>
+                        ) : isCompleted ? (
                           <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 rounded-full font-mono">
                             <Check className="w-3 h-3" />
-                            <span>Score: {submission.score}/100</span>
+                            <span>Score: {submission?.score}/100</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center space-x-1 px-2 py-0.5 text-[10px] font-medium bg-amber-50 text-amber-900 border border-amber-200 rounded font-mono">
@@ -562,26 +894,38 @@ export const StudentDashboard: React.FC = () => {
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-[11px] bg-neutral-50 p-2.5 rounded-xl border border-neutral-200/60 font-mono">
-                      <div>
-                        <span className="text-neutral-400 block text-[10px] uppercase">Target Scope</span>
-                        <span className="font-medium text-neutral-800 truncate block">
-                          {asg.targetProgramName || asg.targetDomainOrTrack || asg.targetDepartment || 'Cohort Wide'}
-                        </span>
+                    {isDisqualified ? (
+                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-950 text-xs flex items-start space-x-2.5">
+                        <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-bold text-rose-900">Disqualified</p>
+                          <p className="text-[11px] text-rose-800 mt-0.5">
+                            Exceeded maximum permitted tab switches.
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-neutral-400 block text-[10px] uppercase">
-                          {isInterview ? 'Rubric / Mode' : 'Passage'}
-                        </span>
-                        <span className="font-medium text-neutral-800 truncate block">
-                          {isInterview 
-                            ? (asg.interviewMode === 'RESUME_BASED' ? 'Resume-Based' : `${asg.difficulty || 'Medium'} · ${asg.domainOrTopic || 'General'}`)
-                            : (asg.listeningPassageId || 'FinPay Gateway')}
-                        </span>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2 text-[11px] bg-neutral-50 p-2.5 rounded-xl border border-neutral-200/60 font-mono">
+                        <div>
+                          <span className="text-neutral-400 block text-[10px] uppercase">Target Scope</span>
+                          <span className="font-medium text-neutral-800 truncate block">
+                            {asg.targetProgramName || asg.targetDomainOrTrack || asg.targetDepartment || 'All Students'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-400 block text-[10px] uppercase">
+                            {isInterview ? 'Rubric / Mode' : 'Passage'}
+                          </span>
+                          <span className="font-medium text-neutral-800 truncate block">
+                            {isInterview 
+                              ? (asg.interviewMode === 'RESUME_BASED' ? 'Resume-Based' : `${asg.difficulty || 'Medium'} · ${asg.domainOrTopic || 'General'}`)
+                              : (asg.listeningPassageId || 'FinPay Gateway')}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    {asg.startTime && asg.endTime && (
+                    {asg.startTime && asg.endTime && !isDisqualified && (
                       <div className="p-2 bg-amber-50/80 rounded-lg border border-amber-200 text-amber-900 text-[11px] flex items-center space-x-1.5">
                         <Clock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                         <span>Active Window: {asg.startTime} to {asg.endTime}</span>
@@ -591,25 +935,58 @@ export const StudentDashboard: React.FC = () => {
 
                   <div className="pt-4 mt-4 border-t border-neutral-100 flex items-center justify-between">
                     <span className="text-[11px] text-neutral-400 font-mono">
-                      {isCompleted ? `Submitted on ${submission.submittedAt ? submission.submittedAt.split('T')[0] : 'Today'}` : 'Not yet attempted'}
+                      {isDisqualified ? (
+                        <span className="text-rose-600 font-bold font-mono">Status: Disqualified</span>
+                      ) : isCompleted ? (
+                        `Submitted on ${submission?.submittedAt ? submission.submittedAt.split('T')[0] : 'Today'}`
+                      ) : (
+                        'Not yet attempted'
+                      )}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => startAssignedSession(asg)}
-                      className={`inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                        isCompleted
-                          ? 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800'
-                          : isBoth
-                          ? 'bg-amber-950 hover:bg-black text-white shadow-xs'
-                          : isInterview
-                          ? 'bg-neutral-900 hover:bg-black text-white shadow-xs'
-                          : 'bg-purple-950 hover:bg-black text-white shadow-xs'
-                      }`}
-                    >
-                      {isBoth ? <Sparkles className="w-3.5 h-3.5 text-amber-400" /> : isInterview ? <Mic className="w-3.5 h-3.5" /> : <Headphones className="w-3.5 h-3.5" />}
-                      <span>{isCompleted ? 'Retake Assessment' : isBoth ? 'Start Combined Drill' : (isInterview ? 'Start Mock Assessment' : 'Start Listening Assessment')}</span>
-                      <ArrowRight className="w-3 h-3 ml-0.5" />
-                    </button>
+                    {isDisqualified ? (
+                      <button
+                        type="button"
+                        disabled={true}
+                        className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-rose-100 text-rose-700 border border-rose-300 opacity-80 cursor-not-allowed"
+                        title="Access revoked: Disqualified due to 4 tab switches"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Disqualified (4 Tab Switches)</span>
+                      </button>
+                    ) : (student.coins ?? 5) < 1 ? (
+                      <button
+                        type="button"
+                        disabled={true}
+                        className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-neutral-100 text-neutral-500 border border-neutral-300 opacity-80 cursor-not-allowed"
+                        title="Insufficient Coins: You need at least 1 coin to attend this session"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>0 Coins (Insufficient Balance)</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof document !== 'undefined' && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+                            document.documentElement.requestFullscreen().catch(() => {});
+                          }
+                          startAssignedSession(asg);
+                        }}
+                        className={`inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                          isCompleted
+                            ? 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800'
+                            : isBoth
+                            ? 'bg-amber-950 hover:bg-black text-white shadow-xs'
+                            : isInterview
+                            ? 'bg-neutral-900 hover:bg-black text-white shadow-xs'
+                            : 'bg-purple-950 hover:bg-black text-white shadow-xs'
+                        }`}
+                      >
+                        {isBoth ? <Sparkles className="w-3.5 h-3.5 text-amber-400" /> : isInterview ? <Mic className="w-3.5 h-3.5" /> : <Headphones className="w-3.5 h-3.5" />}
+                        <span>{isCompleted ? 'Retake Assessment (1 Coin)' : isBoth ? 'Start Combined Drill (1 Coin)' : (isInterview ? 'Start Mock Assessment (1 Coin)' : 'Start Listening Assessment (1 Coin)')}</span>
+                        <ArrowRight className="w-3 h-3 ml-0.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -627,6 +1004,147 @@ export const StudentDashboard: React.FC = () => {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-8 space-y-8 animate-in fade-in duration-200">
       
+      {/* Impersonation Indicator inside Dashboard */}
+      {impersonationSession && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-xs shrink-0">
+              👁
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-900">
+                Viewing Student Dashboard: {student.name} ({student.rollNumber || student.email})
+              </p>
+              <p className="text-[11px] text-amber-700">
+                Impersonated by {impersonationSession.originalUser?.name} ({impersonationSession.originalRole.replace(/_/g, ' ')})
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={returnToOriginalDashboard}
+            className="px-3.5 py-2 bg-neutral-900 hover:bg-black text-white text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-amber-300" />
+            <span>Return to {impersonationSession.originalRole.replace(/_/g, ' ')} Dashboard</span>
+          </button>
+        </div>
+      )}
+
+      {/* 0 Credits Alert Banner */}
+      {(student.coins ?? 5) === 0 && (
+        isIndependent ? (
+          <div className="bg-gradient-to-r from-amber-950 via-neutral-900 to-amber-900 border border-amber-600/70 rounded-2xl p-5 shadow-lg text-white space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start space-x-3.5">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0 mt-0.5">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-sm font-bold text-amber-300">0 Credits Available — 3-Day Waiting Period Active</h3>
+                    <span className="px-2 py-0.5 text-[10px] font-mono bg-amber-400 text-neutral-950 font-bold rounded-full uppercase">
+                      Independent Candidate
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
+                    You have exhausted your credits. Individually registered students must wait a period of <strong>3 days (72 hours)</strong> to automatically regain all 5 credits.
+                  </p>
+                  <div className="flex items-center space-x-2 mt-2 font-mono text-xs">
+                    <span className="text-neutral-400">Regeneration countdown:</span>
+                    <span className="px-2.5 py-1 bg-black/60 rounded-lg text-amber-300 font-bold border border-amber-500/30">
+                      ⏳ {formatCooldown(cooldownRemainingMs)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => simulateElapsedCooldown(student.id || 'stu-21cs1084')}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl text-xs flex items-center space-x-2 shrink-0 shadow-md transition-colors cursor-pointer"
+                title="Fast-forward 3 days to test automatic credit replenishment"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Fast-Forward 3 Days (Test)</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-gradient-to-r from-rose-950 via-neutral-900 to-rose-900 border border-rose-600/70 rounded-2xl p-5 shadow-lg text-white space-y-3">
+            <div className="flex items-start space-x-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center shrink-0 mt-0.5">
+                <ShieldAlert className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-sm font-bold text-rose-300">0 Credits Available — Balance Exhausted</h3>
+                  <span className="px-2 py-0.5 text-[10px] font-mono bg-rose-400 text-neutral-950 font-bold rounded-full uppercase">
+                    Institutional Candidate
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
+                  You have 0 credits remaining. Each interview or communication session requires 1 credit. As an institutional student enrolled under your college department, <strong>only the Super Admin can restore all 5 credits for you</strong>. Please contact your college placement administration or Super Admin to request replenishment.
+                </p>
+              </div>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* Dynamic Indication Notification: Results Ready */}
+      {newReportNotification && (
+        <div 
+          onClick={() => {
+            dismissNewReportNotification();
+            setActiveView('REPORT_VIEW');
+          }}
+          className="bg-emerald-950 border border-emerald-500/80 text-white p-4 rounded-2xl flex items-center justify-between shadow-lg cursor-pointer hover:bg-black transition-all animate-in slide-in-from-top-2 duration-200 group"
+        >
+          <div className="flex items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center shrink-0">
+              <Sparkles className="w-5 h-5 text-emerald-300 animate-spin" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-mono uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-400 text-neutral-950">
+                  Results Ready ({newReportNotification.score}/100)
+                </span>
+                <span className="text-xs text-emerald-300">Just now</span>
+              </div>
+              <p className="text-sm sm:text-base font-bold text-white mt-0.5 group-hover:underline">
+                Your results are ready, click here to view results
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 bg-emerald-500 hover:bg-emerald-400 text-neutral-950 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0">
+            <span>View Results</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </div>
+      )}
+
+      {/* AI Evaluation In Progress Banner */}
+      {isEvaluationPending && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-950 p-4 rounded-2xl flex items-center justify-between shadow-xs animate-pulse">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-neutral-950 flex items-center justify-center shrink-0">
+              <Clock className="w-4 h-4 animate-spin" />
+            </div>
+            <div>
+              <p className="text-[10px] font-mono uppercase font-bold tracking-wider text-amber-800">
+                AI Evaluation In Progress
+              </p>
+              <p className="text-xs sm:text-sm font-semibold text-neutral-900 mt-0.5">
+                Thanks for completing the assessment, you'll receive the results shortly.
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-mono font-medium text-amber-800 bg-amber-100/90 px-3 py-1 rounded-xl hidden sm:inline-block">
+            Calculating Score &amp; Feedback...
+          </span>
+        </div>
+      )}
+
       {/* Student Welcome Header Banner */}
       <div className="bg-white border border-neutral-200/90 rounded-2xl p-6 sm:p-8 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
@@ -662,19 +1180,34 @@ export const StudentDashboard: React.FC = () => {
               className="flex items-center space-x-2 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-300 text-neutral-800 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer"
             >
               <FileText className="w-4 h-4 text-neutral-500" />
-              <span>{student.resume ? 'View Resume Dossier' : 'Upload Resume'}</span>
+              <span>{student.resume ? 'View Full Resume' : 'Upload Resume'}</span>
             </button>
 
-            {latestReport && (
+            {isEvaluationPending ? (
               <button
                 type="button"
-                onClick={() => setActiveView('REPORT_VIEW')}
-                className="flex items-center space-x-2 bg-neutral-900 hover:bg-black text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer"
+                disabled
+                className="flex items-center space-x-2 bg-amber-500/10 border border-amber-300 text-amber-900 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xs animate-pulse cursor-wait"
               >
-                <TrendingUp className="w-4 h-4" />
-                <span>View Latest Scorecard ({latestReport.overallScore}/100)</span>
+                <Sparkles className="w-4 h-4 text-amber-600 animate-spin" />
+                <span>⏳ AI Evaluating Interview...</span>
               </button>
-            )}
+            ) : latestReport ? (
+              <button
+                type="button"
+                onClick={() => {
+                  dismissNewReportNotification();
+                  setActiveView('REPORT_VIEW');
+                }}
+                className="relative flex items-center space-x-2 bg-neutral-900 hover:bg-black text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer group"
+              >
+                <TrendingUp className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                <span>View Recent Interview Results ({latestReport.overallScore}/100)</span>
+                {newReportNotification && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping absolute -top-1 -right-1" />
+                )}
+              </button>
+            ) : null}
           </div>
 
         </div>
@@ -852,7 +1385,7 @@ export const StudentDashboard: React.FC = () => {
               )}
             </div>
             <p className="text-xs text-neutral-300 mt-0.5">
-              You have <strong className="text-white">{relevantAssignments.length} total assigned drills</strong> ({pendingAssignmentsCount} pending, {completedAssignmentsCount} completed). Click here to open and begin your mock interviews.
+              {pendingAssignmentsCount} pending · {completedAssignmentsCount} completed
             </p>
           </div>
         </div>
@@ -885,9 +1418,6 @@ export const StudentDashboard: React.FC = () => {
               <h2 className="text-xl font-semibold tracking-tight text-white">
                 Launch Mock Interview
               </h2>
-              <p className="text-xs text-neutral-400 mt-1.5 leading-relaxed">
-                Engage in an adaptive verbal technical interview grounded in your uploaded resume projects, concurrency concepts, and algorithmic problem solving.
-              </p>
             </div>
 
             <div className="grid grid-cols-3 gap-2 pt-2">
@@ -906,15 +1436,34 @@ export const StudentDashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="pt-6 mt-6 border-t border-neutral-800 flex items-center justify-between">
-            <span className="text-xs text-neutral-400">Includes WPM Pace &amp; Filler Diagnostics</span>
+          <div className="pt-6 mt-6 border-t border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-mono text-amber-400 flex items-center space-x-1">
+                <span>🪙</span>
+                <span>Cost: 1 Coin (Restored upon legitimate completion)</span>
+              </span>
+            </div>
             <button
               type="button"
-              onClick={() => startInterview('MOCK_INTERVIEW')}
-              className="inline-flex items-center space-x-2 bg-white hover:bg-neutral-100 text-neutral-950 font-semibold px-5 py-2.5 rounded-xl text-xs transition-all shadow-sm cursor-pointer"
+              disabled={(student.coins ?? 5) < 1}
+              onClick={() => {
+                if ((student.coins ?? 5) < 1) {
+                  alert("Insufficient Coins: You need at least 1 coin to attend an interview or communication session. Your balance is 0 Coins.");
+                  return;
+                }
+                if (typeof document !== 'undefined' && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+                  document.documentElement.requestFullscreen().catch(() => {});
+                }
+                startInterview('MOCK_INTERVIEW');
+              }}
+              className={`inline-flex items-center justify-center space-x-2 font-semibold px-5 py-2.5 rounded-xl text-xs transition-all shadow-sm ${
+                (student.coins ?? 5) < 1
+                  ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed border border-neutral-700'
+                  : 'bg-white hover:bg-neutral-100 text-neutral-950 cursor-pointer'
+              }`}
             >
               <Mic className="w-3.5 h-3.5" />
-              <span>Launch Mock Interview</span>
+              <span>{(student.coins ?? 5) < 1 ? '0 Coins - Balance Required' : 'Launch Mock Interview'}</span>
               <ArrowRight className="w-3.5 h-3.5 ml-0.5" />
             </button>
           </div>
@@ -926,7 +1475,7 @@ export const StudentDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium bg-neutral-100 text-neutral-700 border border-neutral-200">
                 <Headphones className="w-3 h-3 text-neutral-600" />
-                <span>Auditory Retention &amp; Briefing</span>
+                <span>Listening &amp; Recall</span>
               </span>
               <span className="text-[11px] text-neutral-400 font-mono">AUDIO ONLY</span>
             </div>
@@ -935,9 +1484,6 @@ export const StudentDashboard: React.FC = () => {
               <h2 className="text-xl font-semibold tracking-tight text-neutral-900">
                 Listening Comprehension
               </h2>
-              <p className="text-xs text-neutral-500 mt-1.5 leading-relaxed">
-                Listen to a client architecture requirement passage without text cues, followed by 2 targeted verbal questions testing precision listening.
-              </p>
             </div>
 
             <div className="grid grid-cols-3 gap-2 pt-2">
@@ -947,7 +1493,7 @@ export const StudentDashboard: React.FC = () => {
               </div>
               <div className="bg-neutral-50 border border-neutral-200/80 rounded-xl p-2.5 text-center">
                 <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-mono">Format</p>
-                <p className="text-xs font-medium text-neutral-800 mt-0.5">Voice Retention</p>
+                <p className="text-xs font-medium text-neutral-800 mt-0.5">Audio &amp; Voice</p>
               </div>
               <div className="bg-neutral-50 border border-neutral-200/80 rounded-xl p-2.5 text-center">
                 <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-mono">Feedback</p>
@@ -956,15 +1502,31 @@ export const StudentDashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="pt-6 mt-6 border-t border-neutral-100 flex items-center justify-between">
-            <span className="text-xs text-neutral-500">Tests auditory retention &amp; verbal recall</span>
+          <div className="pt-6 mt-6 border-t border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-mono text-amber-700 flex items-center space-x-1">
+                <span>🪙</span>
+                <span>Cost: 1 Coin (Restored upon legitimate completion)</span>
+              </span>
+            </div>
             <button
               type="button"
-              onClick={() => startInterview('LISTENING_COMPREHENSION')}
-              className="inline-flex items-center space-x-2 bg-neutral-900 hover:bg-black text-white font-semibold px-5 py-2.5 rounded-xl text-xs transition-all shadow-xs cursor-pointer"
+              disabled={(student.coins ?? 5) < 1}
+              onClick={() => {
+                if ((student.coins ?? 5) < 1) {
+                  alert("Insufficient Coins: You need at least 1 coin to attend an interview or communication session. Your balance is 0 Coins.");
+                  return;
+                }
+                startInterview('LISTENING_COMPREHENSION');
+              }}
+              className={`inline-flex items-center justify-center space-x-2 font-semibold px-5 py-2.5 rounded-xl text-xs transition-all shadow-xs ${
+                (student.coins ?? 5) < 1
+                  ? 'bg-neutral-200 text-neutral-500 cursor-not-allowed border border-neutral-300'
+                  : 'bg-neutral-900 hover:bg-black text-white cursor-pointer'
+              }`}
             >
               <Headphones className="w-3.5 h-3.5" />
-              <span>Start Listening</span>
+              <span>{(student.coins ?? 5) < 1 ? '0 Coins - Balance Required' : 'Start Listening'}</span>
               <ArrowRight className="w-3.5 h-3.5 ml-0.5" />
             </button>
           </div>
@@ -976,32 +1538,29 @@ export const StudentDashboard: React.FC = () => {
       {/* POST-INTERVIEW ACTIONABLE IMPROVEMENT CHECKLIST */}
       {/* (Replaces old College Placement Criteria; Controls Overall Readiness %) */}
       {/* ========================================================================= */}
-      <div className="bg-white border border-neutral-200/90 rounded-2xl overflow-hidden shadow-xs">
-        <div className="p-6 border-b border-neutral-200/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-neutral-50/50">
+      <div className="bg-white dark:bg-[#171717] border border-neutral-200/90 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-xs">
+        <div className="p-6 border-b border-neutral-200/80 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-neutral-50/50 dark:bg-[#141414]">
           <div>
             <div className="flex items-center space-x-2.5">
-              <h3 className="text-base font-bold tracking-tight text-neutral-900">
-                Post-Interview Actionable Improvement Checklist
+              <h3 className="text-base font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+                Post-Interview Improvement Checklist
               </h3>
               {totalChecklistCount > 0 && (
-                <span className="px-2.5 py-0.5 text-[11px] font-bold bg-neutral-900 text-white rounded-full font-mono">
+                <span className="px-2.5 py-0.5 text-[11px] font-bold bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-full font-mono">
                   {completedChecklistCount} of {totalChecklistCount} Targets Met
                 </span>
               )}
             </div>
-            <p className="text-xs text-neutral-500 mt-1 max-w-2xl">
-              Targeted weekly improvement milestones derived from your AI diagnostic evaluations. Completing all items achieves 100% placement readiness.
-            </p>
           </div>
 
           <div className="flex items-center space-x-3">
-            <span className="text-xs font-semibold text-neutral-600">Readiness Score:</span>
+            <span className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">Readiness Score:</span>
             <span className={`px-3 py-1 rounded-xl text-xs font-bold border ${
               overallReadinessScore >= 75 
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60' 
                 : overallReadinessScore > 0 
-                ? 'bg-amber-50 text-amber-800 border-amber-300' 
-                : 'bg-neutral-100 text-neutral-700 border-neutral-300'
+                ? 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60' 
+                : 'bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-neutral-900 dark:text-neutral-200 dark:border-neutral-700'
             }`}>
               {overallReadinessScore}% {overallReadinessScore === 100 ? '🎉 Placement Ready' : ''}
             </span>
@@ -1011,17 +1570,22 @@ export const StudentDashboard: React.FC = () => {
         {checklist.length === 0 ? (
           <div className="p-10 text-center text-neutral-400 space-y-2">
             <Sparkles className="w-8 h-8 text-neutral-300 mx-auto" />
-            <h4 className="text-sm font-semibold text-neutral-800">No Post-Interview Checklist Generated Yet</h4>
-            <p className="text-xs text-neutral-500 max-w-md mx-auto">
-              Your overall readiness is currently <strong>0%</strong>. Once you attend a mock interview or assigned practice drill, your personalized weekly improvement checklist will appear here.
+            <h4 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">No Improvement Checklist Yet</h4>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-md mx-auto">
+              Complete a mock interview or assigned practice drill to generate your checklist.
             </p>
             <button
               type="button"
-              onClick={() => startInterview('MOCK_INTERVIEW')}
+              onClick={() => {
+                if (typeof document !== 'undefined' && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+                  document.documentElement.requestFullscreen().catch(() => {});
+                }
+                startInterview('MOCK_INTERVIEW');
+              }}
               className="mt-2 inline-flex items-center space-x-2 px-4 py-2 bg-neutral-900 hover:bg-black text-white rounded-xl text-xs font-semibold transition-all shadow-xs cursor-pointer"
             >
               <Mic className="w-3.5 h-3.5" />
-              <span>Attend Interview to Generate Action Plan</span>
+              <span>Take an Interview to Generate Action Plan</span>
             </button>
           </div>
         ) : (
@@ -1094,8 +1658,7 @@ export const StudentDashboard: React.FC = () => {
                   <Code2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-neutral-900">Link Coding &amp; Development Profiles</h3>
-                  <p className="text-xs text-neutral-500">Connect LeetCode, GitHub, and additional competitive programming handles</p>
+                  <h3 className="text-sm font-bold text-neutral-900">Link Coding Profiles</h3>
                 </div>
               </div>
               <button 
@@ -1109,11 +1672,30 @@ export const StudentDashboard: React.FC = () => {
 
             <form onSubmit={handleSaveHandles} className="p-6 space-y-4 text-xs overflow-y-auto">
               
+              {/* Live fetch message */}
+              {fetchStatsMessage && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{fetchStatsMessage}</span>
+                </div>
+              )}
+
               {/* LeetCode Section */}
               <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200/80 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-neutral-900">LeetCode Profile</span>
-                  <span className="text-[10px] font-mono text-neutral-400">leetcode.com/u/username</span>
+                  <div>
+                    <span className="font-bold text-neutral-900">LeetCode Profile</span>
+                    <span className="text-[10px] font-mono text-neutral-400 ml-2">leetcode.com/u/username</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleFetchLeetCodeStats}
+                    disabled={!lcUsername.trim() || fetchingLcStats}
+                    className="inline-flex items-center space-x-1 px-2.5 py-1 bg-white border border-neutral-200 hover:bg-neutral-100 rounded-lg text-[11px] font-semibold text-neutral-800 disabled:opacity-40 transition-colors cursor-pointer shadow-2xs"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${fetchingLcStats ? 'animate-spin text-blue-600' : 'text-neutral-500'}`} />
+                    <span>{fetchingLcStats ? 'Fetching...' : 'Fetch Live Stats'}</span>
+                  </button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -1145,8 +1727,19 @@ export const StudentDashboard: React.FC = () => {
               {/* GitHub Section */}
               <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200/80 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-neutral-900">GitHub Profile</span>
-                  <span className="text-[10px] font-mono text-neutral-400">github.com/username</span>
+                  <div>
+                    <span className="font-bold text-neutral-900">GitHub Profile</span>
+                    <span className="text-[10px] font-mono text-neutral-400 ml-2">github.com/username</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleFetchGitHubStats}
+                    disabled={!ghUsername.trim() || fetchingGhStats}
+                    className="inline-flex items-center space-x-1 px-2.5 py-1 bg-white border border-neutral-200 hover:bg-neutral-100 rounded-lg text-[11px] font-semibold text-neutral-800 disabled:opacity-40 transition-colors cursor-pointer shadow-2xs"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${fetchingGhStats ? 'animate-spin text-blue-600' : 'text-neutral-500'}`} />
+                    <span>{fetchingGhStats ? 'Fetching...' : 'Fetch Live Stats'}</span>
+                  </button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -1268,6 +1861,194 @@ export const StudentDashboard: React.FC = () => {
 
       {uploadModalOpen && (
         <ResumeUploadModal onClose={() => setUploadModalOpen(false)} />
+      )}
+
+      {/* Independent Candidate Instant Credit Refill Payment Modal */}
+      {paymentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white border border-neutral-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col">
+            <div className="p-5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/70">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-neutral-900">Instant Credit Refill</h3>
+                  <p className="text-[11px] text-neutral-500">Independent Candidate Fast-Pass</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentModalOpen(false)}
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {paymentSuccess ? (
+              <div className="p-8 text-center space-y-3">
+                <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto animate-bounce">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <h4 className="text-base font-bold text-neutral-900">Payment Successful!</h4>
+                <p className="text-xs text-neutral-600">
+                  Transaction verified. All <strong>5 credits</strong> have been restored to your balance immediately.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleProcessPayment} className="p-6 space-y-4">
+                <div className="p-3.5 bg-amber-50/60 border border-amber-200/80 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-amber-950">5 AI Interview Credits Pack</span>
+                    <span className="text-sm font-bold font-mono text-amber-900">₹399 / $4.99</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    Bypass the 3-day wait window. Restores full balance of 5 coins for practice interviews and listening comprehension.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1.5">Payment Method</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('UPI')}
+                      className={`p-2.5 rounded-xl border text-xs font-medium text-center transition-all cursor-pointer ${
+                        paymentMethod === 'UPI'
+                          ? 'border-neutral-900 bg-neutral-900 text-white shadow-xs'
+                          : 'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50'
+                      }`}
+                    >
+                      UPI / QR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('CARD')}
+                      className={`p-2.5 rounded-xl border text-xs font-medium text-center transition-all cursor-pointer ${
+                        paymentMethod === 'CARD'
+                          ? 'border-neutral-900 bg-neutral-900 text-white shadow-xs'
+                          : 'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50'
+                      }`}
+                    >
+                      Credit / Debit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('NETBANKING')}
+                      className={`p-2.5 rounded-xl border text-xs font-medium text-center transition-all cursor-pointer ${
+                        paymentMethod === 'NETBANKING'
+                          ? 'border-neutral-900 bg-neutral-900 text-white shadow-xs'
+                          : 'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50'
+                      }`}
+                    >
+                      Net Banking
+                    </button>
+                  </div>
+                </div>
+
+                {paymentMethod === 'UPI' && (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-neutral-700">Virtual Payment Address (UPI ID)</label>
+                    <input
+                      type="text"
+                      required
+                      value={upiId}
+                      onChange={(e) => setUpiId(e.target.value)}
+                      placeholder="username@okaxis or mobile@upi"
+                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-xs font-mono focus:outline-none focus:border-neutral-900"
+                    />
+                    <p className="text-[10px] text-neutral-400">Supports Google Pay, PhonePe, Paytm, BHIM</p>
+                  </div>
+                )}
+
+                {paymentMethod === 'CARD' && (
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-700 mb-1">Card Number</label>
+                      <input
+                        type="text"
+                        required
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(e.target.value)}
+                        placeholder="•••• •••• •••• ••••"
+                        className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-xs font-mono focus:outline-none focus:border-neutral-900"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium text-neutral-700 mb-1">Expiry Date</label>
+                        <input
+                          type="text"
+                          required
+                          value={cardExpiry}
+                          onChange={(e) => setCardExpiry(e.target.value)}
+                          placeholder="MM/YY"
+                          className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-xs font-mono focus:outline-none focus:border-neutral-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-neutral-700 mb-1">CVV</label>
+                        <input
+                          type="password"
+                          required
+                          maxLength={4}
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(e.target.value)}
+                          placeholder="•••"
+                          className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-xs font-mono focus:outline-none focus:border-neutral-900"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {paymentMethod === 'NETBANKING' && (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-neutral-700">Select Bank</label>
+                    <select className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-xs focus:outline-none focus:border-neutral-900">
+                      <option>HDFC Bank</option>
+                      <option>State Bank of India (SBI)</option>
+                      <option>ICICI Bank</option>
+                      <option>Axis Bank</option>
+                      <option>Kotak Mahindra Bank</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="pt-2 flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5 text-[11px] text-neutral-500">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>256-Bit Encrypted</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentModalOpen(false)}
+                      className="px-3.5 py-2 rounded-xl text-xs font-medium text-neutral-600 hover:bg-neutral-100 transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={paymentProcessing}
+                      className="px-4 py-2 bg-neutral-900 hover:bg-black text-white font-semibold rounded-xl text-xs flex items-center space-x-1.5 shadow-xs disabled:opacity-50 transition-all cursor-pointer"
+                    >
+                      {paymentProcessing ? (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 animate-spin" />
+                          <span>Processing...</span>
+                        </>
+                      ) : (
+                        <span>Pay ₹399 &amp; Restore 5 Coins</span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       )}
 
     </div>

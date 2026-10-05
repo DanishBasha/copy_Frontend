@@ -82,7 +82,7 @@ export const ResumeUploadModal: React.FC<ResumeUploadModalProps> = ({ onClose })
               <FileText className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold tracking-tight text-neutral-900">Student Resume Intake & Grounding</h3>
+              <h3 className="text-sm font-semibold tracking-tight text-neutral-900">Student Resume Upload &amp; Profile</h3>
               <p className="text-xs text-neutral-500">Extracts your technical stack to personalize mock interview questions</p>
             </div>
           </div>
