@@ -45,13 +45,24 @@
           </svg>
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 26px; font-weight: 700; font-family: 'M Saans', 'Inter', sans-serif; color: #141414; letter-spacing: -0.03em;">Latch<span style="color: #717171; font-weight: 600;">Up</span></span>
-          <span style="font-size: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace; background-color: #fafafa; color: #141414; padding: 2px 7px; border-radius: 6px; border: 1px solid #ededed; letter-spacing: 0.08em; text-transform: uppercase;">LET'S CATCH UP</span>
+          <span class="loader-title" style="font-size: 26px; font-weight: 700; font-family: 'M Saans', 'Inter', sans-serif; color: #141414; letter-spacing: -0.03em;">Latch<span style="color: #717171; font-weight: 600;">Up</span></span>
+          <span class="loader-badge" style="font-size: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace; background-color: #fafafa; color: #141414; padding: 2px 7px; border-radius: 6px; border: 1px solid #ededed; letter-spacing: 0.08em; text-transform: uppercase;">LET'S CATCH UP</span>
         </div>
         <style>
           @keyframes logoPulse {
             0%, 100% { transform: scale(1); opacity: 0.90; }
             50% { transform: scale(1.08); opacity: 1; }
+          }
+          html.dark #initial-loader {
+            background-color: #0a0a0a !important;
+          }
+          html.dark #initial-loader .loader-title {
+            color: #f5f5f5 !important;
+          }
+          html.dark #initial-loader .loader-badge {
+            background-color: #171717 !important;
+            color: #ededed !important;
+            border-color: #2e2e2e !important;
           }
         </style>
       </div>

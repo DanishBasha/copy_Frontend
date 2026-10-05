@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { BrandIcon } from '../common/BrandLogo';
 import { 
@@ -7,18 +7,18 @@ import {
   ShieldCheck, 
   ArrowRight, 
   CheckCircle2, 
-  ChevronRight,
-  ChevronDown,
-  Building2,
-  Volume2,
-  Zap,
-  Award,
-  Users,
-  Lock,
-  Headphones,
-  Check,
-  Sun,
-  Moon
+  ChevronRight, 
+  ChevronDown, 
+  Building2, 
+  Volume2, 
+  Zap, 
+  Award, 
+  Users, 
+  Lock, 
+  Headphones, 
+  Check, 
+  Sun, 
+  Moon 
 } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {
@@ -26,51 +26,6 @@ export const LandingPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'interview' | 'listening' | 'proctoring' | 'rbac'>('interview');
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
   const [heroTab, setHeroTab] = useState<'interview' | 'telemetry' | 'proctoring'>('interview');
-
-  // Full-Screen Slow Loading Animation
-  const [isPageLoading, setIsPageLoading] = useState(true);
-  const [loaderFading, setLoaderFading] = useState(false);
-
-  useEffect(() => {
-    // Slow heartbeat loader for 2.2 seconds, smoothly fading out over 1200ms
-    const fadeTimer = setTimeout(() => {
-      setLoaderFading(true);
-    }, 2200);
-
-    const removeTimer = setTimeout(() => {
-      setIsPageLoading(false);
-    }, 3400);
-
-    return () => {
-      clearTimeout(fadeTimer);
-      clearTimeout(removeTimer);
-    };
-  }, []);
-
-  // IntersectionObserver for scroll fade-up animations
-  const sectionRefs = useRef<(HTMLElement | null)[]>([]);
-  useEffect(() => {
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('is-visible');
-          observer.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.12 });
-
-    sectionRefs.current.forEach(el => {
-      if (el) observer.observe(el);
-    });
-
-    return () => observer.disconnect();
-  }, []);
-
-  const addSectionRef = (el: HTMLElement | null) => {
-    if (el && !sectionRefs.current.includes(el)) {
-      sectionRefs.current.push(el);
-    }
-  };
 
   const faqItems = [
     {
@@ -99,45 +54,9 @@ export const LandingPage: React.FC = () => {
     <div className="min-h-screen bg-white text-[#141414] flex flex-col antialiased selection:bg-[#141414] selection:text-white font-sans">
       
       {/* ──────────────────────────────────────────────────────────
-          0. FULL-SCREEN SLOW LOADING ANIMATION (HEARTBEAT LOGO)
-      ────────────────────────────────────────────────────────── */}
-      {isPageLoading && (
-        <div 
-          className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-white transition-opacity ease-out ${
-            loaderFading ? 'opacity-0 pointer-events-none' : 'opacity-100'
-          }`}
-          style={{ transitionDuration: '1200ms' }}
-          onClick={() => setIsPageLoading(false)}
-          title="Click to skip loader"
-        >
-          {/* Logo with previous heartbeat pulse effect */}
-          <div 
-            className="w-20 h-20 rounded-3xl bg-[#141414] flex items-center justify-center shadow-xl mb-5"
-            style={{ animation: 'logoPulse 2s ease-in-out infinite' }}
-          >
-            <svg viewBox="0 0 36 36" width="44" height="44" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M 8.5 9.5 V 26.5 H 20" stroke="#FFFFFF" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M 15 20 L 27.5 7.5" stroke="#FFFFFF" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M 18.5 7.5 H 27.5 V 16.5" stroke="#FFFFFF" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-
-          {/* Title & Tagline with Mobbin typography */}
-          <div className="flex items-center space-x-2.5">
-            <span className="text-2xl sm:text-3xl font-bold tracking-tight text-[#141414] font-sans">
-              Latch<span className="text-[#717171] font-semibold">Up</span>
-            </span>
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-[#fafafa] text-[#141414] rounded-md border border-[#ededed] font-mono tracking-wider uppercase">
-              LET'S CATCH UP
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* ──────────────────────────────────────────────────────────
           1. HEADER / NAVBAR
       ────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#ededed] transition-all w-full">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#ededed] transition-colors w-full">
         <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-10">
           <div className="flex items-center justify-between h-16">
             
@@ -357,11 +276,11 @@ export const LandingPage: React.FC = () => {
                     </div>
 
                     {/* Dynamic Soundwave Visualizer with Mobbin Blue */}
-                    <div className="flex items-center justify-center space-x-1 py-2">
+                    <div className="flex items-center justify-center space-x-1 py-2 h-10">
                       {[10, 22, 14, 26, 18, 30, 16, 24, 12, 28, 20, 32, 18, 26, 14, 28, 20, 15, 22, 11].map((height, i) => (
                         <div
                           key={i}
-                          className="w-1 bg-[#0065ff] rounded-full"
+                          className="w-1 bg-[#0065ff] rounded-full origin-center"
                           style={{
                             height: `${height}px`,
                             animation: `soundwaveBar 1.2s ease-in-out infinite`,
@@ -526,7 +445,7 @@ export const LandingPage: React.FC = () => {
       {/* ──────────────────────────────────────────────────────────
           3. DUAL PILLARS SECTION (MOBBIN DESIGN SYSTEM)
       ────────────────────────────────────────────────────────── */}
-      <section id="institutions" ref={addSectionRef} className="py-20 sm:py-28 bg-white border-b border-[#ededed] fade-up font-sans">
+      <section id="institutions" className="py-20 sm:py-28 bg-white border-b border-[#ededed] font-sans">
         <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-10">
           
           <div className="text-center mb-16 max-w-3xl mx-auto">
@@ -635,7 +554,7 @@ export const LandingPage: React.FC = () => {
       {/* ──────────────────────────────────────────────────────────
           4. INTERACTIVE FEATURE DEMOS (MOBBIN DESIGN SYSTEM)
       ────────────────────────────────────────────────────────── */}
-      <section id="features" ref={addSectionRef} className="py-20 sm:py-28 bg-[#fafafa] border-b border-[#ededed] fade-up font-sans">
+      <section id="features" className="py-20 sm:py-28 bg-[#fafafa] border-b border-[#ededed] font-sans">
         <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-10">
           
           <div className="text-center mb-12 max-w-2xl mx-auto">
@@ -885,7 +804,7 @@ export const LandingPage: React.FC = () => {
       {/* ──────────────────────────────────────────────────────────
           5. ROLE-BASED ACCESS CONTROL (RBAC) GOVERNANCE
       ────────────────────────────────────────────────────────── */}
-      <section id="governance" ref={addSectionRef} className="py-20 sm:py-28 bg-white border-b border-[#ededed] fade-up font-sans">
+      <section id="governance" className="py-20 sm:py-28 bg-white border-b border-[#ededed] font-sans">
         <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-10 space-y-12">
           
           <div className="text-center max-w-2xl mx-auto space-y-2">
@@ -1110,7 +1029,7 @@ export const LandingPage: React.FC = () => {
       {/* ──────────────────────────────────────────────────────────
           6. FAQ ACCORDION SECTION (MOBBIN DESIGN SYSTEM)
       ────────────────────────────────────────────────────────── */}
-      <section id="faq" ref={addSectionRef} className="py-20 sm:py-28 bg-[#fafafa] border-b border-[#ededed] fade-up font-sans">
+      <section id="faq" className="py-20 sm:py-28 bg-[#fafafa] border-b border-[#ededed] font-sans">
         <div className="max-w-[900px] mx-auto px-4 sm:px-6 lg:px-8">
           
           <div className="text-center mb-14">
@@ -1162,7 +1081,7 @@ export const LandingPage: React.FC = () => {
       {/* ──────────────────────────────────────────────────────────
           7. BOTTOM CALL TO ACTION
       ────────────────────────────────────────────────────────── */}
-      <section ref={addSectionRef} className="py-20 sm:py-24 bg-white fade-up font-sans">
+      <section className="py-20 sm:py-24 bg-white font-sans">
         <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-10 font-sans">
           <div className="bg-[#141414] text-white rounded-3xl p-8 sm:p-14 text-center space-y-6 shadow-2xl relative overflow-hidden font-sans border border-[#262626]">
             

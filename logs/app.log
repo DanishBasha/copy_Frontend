@@ -661,3 +661,7 @@
 [2026-10-05 07:41:04] [INFO] [AUTH] Sign out: candidate@example.com
 [2026-10-05 07:43:56] [INFO] [AUTH] Login: candidate@example.com (STUDENT)
 [2026-10-05 07:44:08] [INFO] [AUTH] Sign out: candidate@example.com
+[2026-10-05 07:52:18] [INFO] [AUTH] Login: candidate@example.com (STUDENT)
+[2026-10-05 07:52:21] [INFO] [NAV] View: INTERVIEW_ROOM
+[2026-10-05 07:53:33] [INFO] [NAV] View: DASHBOARD
+[2026-10-05 09:10:42] [INFO] [AUTH] Sign out: candidate@example.com

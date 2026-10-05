@@ -108,7 +108,7 @@ const AppLayout: React.FC = () => {
   const isAssessmentRoom = activeView === 'INTERVIEW_ROOM' || activeView === 'LISTENING_ROOM';
 
   return (
-    <div className="min-h-screen bg-[#fafafa] dark:bg-[#0d0d0d] text-neutral-900 dark:text-[#f5f5f5] flex flex-col antialiased selection:bg-neutral-900 dark:selection:bg-white selection:text-white dark:selection:text-neutral-900 w-full transition-colors duration-150">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#0d0d0d] text-neutral-900 dark:text-[#f5f5f5] flex flex-col antialiased selection:bg-neutral-900 dark:selection:bg-white selection:text-white dark:selection:text-neutral-900 w-full">
       {/* Impersonation / View-As Return Bar */}
       {impersonationSession && !isAssessmentRoom && (
         <aside aria-label="Impersonation Status" className="bg-neutral-950 text-white px-4 sm:px-6 py-2.5 text-xs flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 shadow-md sticky top-0 z-50 animate-in slide-in-from-top-2 duration-150">
